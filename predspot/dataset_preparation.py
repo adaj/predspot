@@ -8,21 +8,6 @@ import numpy as np
 from shapely.geometry import Point
 
 
-# crime_tags = {'todas_ocorrencias': ['ASSALTO', 'OUTROS', 'AMEACAS', 'CONSUMO_DE_DROGAS',
-#                                     'VEICULOS_ABERTOS', 'ACIDENTES', 'FURTO_DE_TERCEIROS']}
-# gresolution = 0.1
-#
-# city = gpd.read_file('ufrn/ufrn.geojson')
-# cdata = pd.read_csv('ufrn/crime_data.csv', index_col=0)
-#
-# analyzed_tag = 'todas_ocorrencias'
-# dataset = Dataset(crimes=cdata.loc[cdata['tag'].isin(crime_tags[analyzed_tag])],
-#                   study_area=city, grid_resolution=gresolution)
-# dataset.plot()
-#
-# train, test = dataset.train_test_split(test_size=0.25)
-
-
 class Dataset:
 
     def __init__(self, crimes, study_area, grid_resolution=0.5, poi_data=None):
@@ -99,7 +84,7 @@ def make_gridpoints(study_area, resolution=1, return_coords=False):
         raise Exception("Resolution too coarse to return a useful grid, " \
                         + "Try smaller values.")
     gridpoints = gridpoints.loc[grid_ix]
-    gridpoints.index.name = 'place'
+    gridpoints.index.name = 'places'
     if return_coords:
         return gridpoints, lonv, latv
     return gridpoints
