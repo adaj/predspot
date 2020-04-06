@@ -1,6 +1,8 @@
 """
-Author: Adelson Araujo
+Supervised Learning Modelling
 """
+
+__author__ = 'Adelson Araujo'
 
 import pandas as pd
 import geopandas as gpd
@@ -9,7 +11,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin
 from sklearn.pipeline import Pipeline
 
 
-class FeatureScaling(TransformerMixin, BaseEstimator):
+class FeatureSelection(TransformerMixin, BaseEstimator):
 
     def __init__(self, estimator):
         self._estimator = estimator
@@ -17,13 +19,6 @@ class FeatureScaling(TransformerMixin, BaseEstimator):
     def fit(self, x, y=None):
         self._estimator.fit(x,y)
         return self
-
-    def transform(self, x):
-        return pd.DataFrame(self._estimator.transform(x), index=x.index,
-                            columns=x.columns)
-
-
-class FeatureSelection(FeatureScaling):
 
     def transform(self, x):
         return pd.DataFrame(self._estimator.transform(x), index=x.index,
@@ -52,6 +47,7 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         self._estimator = estimator
         self._dataset = None
         self._t_plus_one = None
+        self._stseries = None
         if mapping._tfreq == 'M':
             self._offset = pd.tseries.offsets.MonthEnd(1)
         elif mapping._tfreq == 'W':
@@ -59,13 +55,24 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         elif mapping._tfreq == 'D':
             self._offset = pd.tseries.offsets.Day(1)
 
+    @property
+    def grid(self):
+        return self._mapping._grid
+
+    @property
+    def stseries(self):
+        return self._stseries
+
     def fit(self, dataset, y=None):
         self._dataset = dataset
         self._stseries = self._mapping.fit_transform(dataset.crimes)
         self._X = self._fextraction.fit_transform(self._stseries)
         t0 = self._X.index.get_level_values('t').unique().min()
         tf = self._stseries.index.get_level_values('t').unique().max()
-        self._estimator.fit(self._X.loc[t0:tf], self._stseries.loc[t0:tf])
+        try:
+            self._estimator.fit(self._X.loc[t0:tf], self._stseries.loc[t0:tf])
+        except:
+            raise Exception(f'ERRO: {t0}, {tf} \nX: {self._X.loc[t0:tf]}')
         self._t_plus_one = self._X.index.get_level_values('t').unique()[-1]
         return self
 
