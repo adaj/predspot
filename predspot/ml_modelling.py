@@ -9,6 +9,10 @@ import geopandas as gpd
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.model_selection import TimeSeriesSplit
+
+idx = pd.IndexSlice
 
 
 class FeatureSelection(TransformerMixin, BaseEstimator):
@@ -45,9 +49,8 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         self._mapping = mapping
         self._fextraction = fextraction
         self._estimator = estimator
-        self._dataset = None
-        self._t_plus_one = None
         self._stseries = None
+        self._dataset = None
         if mapping._tfreq == 'M':
             self._offset = pd.tseries.offsets.MonthEnd(1)
         elif mapping._tfreq == 'W':
@@ -60,8 +63,47 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         return self._mapping._grid
 
     @property
+    def dataset(self):
+        return self._dataset
+
+    @property
     def stseries(self):
         return self._stseries
+
+    @property
+    def feature_importances(self):
+        # TODO: this needs improvements
+        assert self._X is not None, 'this instance was not fitted yet.'
+        try:
+            return pd.DataFrame(self._estimator.steps[-1][1]._estimator.feature_importances_,
+                                index=self._X.columns[self._estimator.steps[-2][1]._estimator.support_],
+                                columns=['importance'])
+        except:
+            raise Exception('estimator used has not feature importances implemented yet.')
+
+    def evaluate(self, scoring, cv=5):
+        assert self._X is not None, 'this instance was not fitted yet.'
+        if scoring == 'r2':
+            scoring = r2_score
+        elif scoring == 'mse':
+            scoring = mean_squared_error
+        else:
+            raise Exception('invalid scoring. Try "r2" or "mse".')
+        timestamps = self._X.index.get_level_values('t').unique()\
+            .intersection(self._stseries.index.get_level_values('t').unique())
+        assert isinstance(cv, int) and cv < len(timestamps), \
+            'cv must be an integer and not higher than the number of timestamps available.'
+        scores = []
+        for train_t, test_t in TimeSeriesSplit(cv).split(timestamps):
+            X_train = self._X.loc[idx[timestamps[train_t], :], :].sample(frac=1) # shuffle for training
+            X_test = self._X.loc[idx[timestamps[test_t], :], :]
+            y_train = self._stseries.loc[X_train.index]
+            y_test = self._stseries.loc[timestamps[test_t]]
+            self._estimator.fit(X_train, y_train)
+            y_pred = self._estimator.predict(X_test)
+            scores.append(scoring(y_test, y_pred))
+        self.fit(self._dataset) # back to normal
+        return scores
 
     def fit(self, dataset, y=None):
         self._dataset = dataset
@@ -69,8 +111,10 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         self._X = self._fextraction.fit_transform(self._stseries)
         t0 = self._X.index.get_level_values('t').unique().min()
         tf = self._stseries.index.get_level_values('t').unique().max()
+        X = self._X.loc[t0:tf].sample(frac=1) # shuffle for training
+        y = self._stseries.loc[X.index]       # shuffle for training
         try:
-            self._estimator.fit(self._X.loc[t0:tf], self._stseries.loc[t0:tf])
+            self._estimator.fit(X, y)
         except:
             raise Exception(f'ERRO: {t0}, {tf} \nX: {self._X.loc[t0:tf]}')
         self._t_plus_one = self._X.index.get_level_values('t').unique()[-1]

@@ -1,21 +1,20 @@
 import unittest
 import sys
-sys.path.append('../..')
-sys.path.append('/Users/adelsondias/Documents/Repos/dev-predspot')
 
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import QuantileTransformer
+from sklearn.feature_selection import RFE
+from sklearn.ensemble import RandomForestRegressor
+
 from predspot.dataset_preparation import *
+from predspot.crime_mapping import *
 from predspot.feature_engineering import *
 from predspot.ml_modelling import *
 from predspot.utilities import *
-
-
-(pd.to_datetime(start_time)+pd.tseries.offsets.MonthEnd(2)).strftime('%Y-%m-%d')
-
-
 
 
 def generate_testdata(n_points, start_time, end_time):
@@ -46,50 +45,46 @@ class TestFeatureEngineering(unittest.TestCase):
         crimes, study_area = generate_testdata(n_points=10000,
                                                start_time='2019-01-31',
                                                end_time='2019-12-31')
-        self.grid_resolution = 100
-        self.freq = 'M'
-        self.lags = 2
-        self.analysis_start_time = '2019-03-01'
-        self.analysis_end_time = '2019-12-31'
-        self.datasets, self.features = {}, {}
+        grid = create_gridpoints(study_area, resolution=100)
+        freq = 'M'
+        lags = 2
+        # analysis_start_time = '2019-03-01'
+        # analysis_end_time = '2019-12-31'
+        self.pipelines = []
         for crime_type in crimes['tag'].unique():
             crime_data = crimes.loc[crimes['tag']==crime_type]
             print(f'setting up - {crime_type} ({len(crime_data)} samples) ...')
-            self.datasets[crime_type] = Dataset(crime_data, study_area,
-                                   self.grid_resolution,
-                                   poi_data=None)
+            dataset = Dataset(crimes=crime_data, study_area=study_area)
+            pred_pipeline = PredictionPipeline(
+                mapping = KDE(tfreq = freq, bandwidth='auto', grid = grid),
+                fextraction=PandasFeatureUnion([
+                    ('seasonal', Seasonality(lags)),
+                    ('trend', Trend(lags)),
+                    ('diff', Diff(lags))
+                    # geographic features
+                ]),
+                estimator=Pipeline([
+                    ('f_scaling', FeatureScaling(
+                            QuantileTransformer(10, output_distribution='uniform'))),
+                    ('f_selection', FeatureSelection(
+                            RFE(RandomForestRegressor()))),
+                    ('model', Model(RandomForestRegressor(n_estimators=50)))
+                ])
+            )
+            self.pipelines.append(pred_pipeline.fit(dataset))
 
-            kde = KDE(tfreq=self.freq,
-                      grid=self.datasets[crime_type].grid,
-                      start_time=self.analysis_start_time,
-                      end_time=self.analysis_end_time)
-            stseries = kde.fit_transform(self.datasets[crime_type].crimes)
-            self.features[crime_type] = PandasFeatureUnion([
-                        ('seasonal', Seasonality(lags=self.lags)),
-                        ('trend', Trend(lags=self.lags)),
-                        ('diff', Diff(lags=self.lags))
-                        # geographic features...
-            ]).fit_transform(stseries)
+    # def test_feature_engineering(self):
+    #     for p in self.pipelines:
+    #         self.assertEqual(p._X.index.get_level_values('t').min(),
+    #                          pd.to_datetime('2019-04-30'))
+    #         self.assertEqual(p._X.index.get_level_values('t').max(),
+    #                          pd.to_datetime('2020-01-31'))
 
-    def test_feature_engineering(self):
-        for crime_type in self.datasets:
-            print(f'testing - {crime_type}')
-            self.assertEqual(self.features[crime_type].index.get_level_values('t').min(),
-                             pd.to_datetime('2019-05-31'))
-            self.assertEqual(self.features[crime_type].index.get_level_values('t').max(),
-                             pd.to_datetime('2020-01-31'))
+    def test_evaluation(self):
+        for p in self.pipelines:
+            p.evaluate('r2')
+            break
 
 
 if __name__ == '__main__':
     unittest.main()
-
-
-# crimes, study_area = generate_testdata(n_points=5000,
-#                                        start_time='2019-01-01',
-#                                        end_time='2020-01-01')
-# dataset = Dataset(crimes, study_area, grid_resolution=100, poi_data=None)
-# dataset
-# %matplotlib inline
-# dataset.plot(crime_samples=1000,
-#              crimes={'markersize':1},
-#              study_area={'linewidth':2})

@@ -13,7 +13,7 @@ from shapely.geometry import Point, LineString
 
 class Dataset:
 
-    def __init__(self, crimes, study_area, poi_data=None):
+    def __init__(self, crimes, study_area):#, poi_data=None):
         assert isinstance(study_area, gpd.GeoDataFrame), \
             "study_area must be a geopandas GeoDataFrame."
         self._study_area = study_area
@@ -26,18 +26,18 @@ class Dataset:
                                                       axis=1)
         self._crimes = gpd.GeoDataFrame(self._crimes, crs={'init': 'epsg:4326'})
         self._crimes['t'] = self._crimes['t'].apply(pd.to_datetime)
-        if poi_data is None:
-            self._poi_data = gpd.GeoDataFrame()
-        else:
-            self._poi_data = poi_data
+        # if poi_data is None:
+        #     self._poi_data = gpd.GeoDataFrame()
+        # else:
+        #     self._poi_data = poi_data
 
     def __repr__(self):
         return 'predspot.Dataset<\n'\
              + f'  crimes = GeoDataFrame({self._crimes.shape[0]}),\n' \
              + f'    >> {self.crimes["tag"].value_counts().to_dict()}\n' \
              + f'  study_area = GeoDataFrame({self._study_area.shape[0]}),\n' \
-             + f'  poi_data = GeoDataFrame({self._poi_data.shape[0]})\n' \
              + '>'
+             # + f'  poi_data = GeoDataFrame({self._poi_data.shape[0]})\n' \
 
     @property
     def crimes(self):
@@ -47,15 +47,16 @@ class Dataset:
     def study_area(self):
         return self._study_area
 
-    @property
-    def poi_data(self):
-        return self._poi_data
+    # @property
+    # def poi_data(self):
+    #     return self._poi_data
 
     @property
     def shape(self):
         return {'crimes': self._crimes.shape,
                 'study_area': self._study_area.shape,
-                'poi_data': self._poi_data.shape}
+                #'poi_data': self._poi_data.shape,
+                }
 
     def plot(self, ax=None, crime_samples=1000, **kwargs):
         if ax is None:
