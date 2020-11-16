@@ -1,4 +1,5 @@
 import predspot.dataset_preparation
+import predspot.crime_mapping
 import predspot.feature_engineering
 import predspot.ml_modelling
 import predspot.utilities

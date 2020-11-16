@@ -13,10 +13,13 @@ from stldecompose import decompose
 
 class TimeSeriesFeatures(BaseEstimator, TransformerMixin): # X
 
-    def __init__(self, lags):
+    def __init__(self, lags, tfreq):
         assert isinstance(lags, int) and lags > 1, \
             '`lags` must be a positive integer.'
         self._lags = lags
+        assert tfreq in ['D', 'W', 'M'], \
+            '`tfreq` not allowed, choose between `D`, `W`, `M`.'
+        self._tfreq = tfreq
 
     @property
     def lags(self):
@@ -42,12 +45,12 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin): # X
 
     def transform(self, stseries):
         X = pd.DataFrame()
-        freq = stseries.index.get_level_values('t').unique().inferred_freq
-        if freq=='M':
+        # freq = stseries.index.get_level_values('t').unique().inferred_freq
+        if self._tfreq=='M':
             next_time = pd.tseries.offsets.MonthEnd(1)
-        elif freq=='W':
+        elif self._tfreq=='W':
             next_time = pd.tseries.offsets.Week(1)
-        elif freq=='D':
+        elif self._tfreq=='D':
             next_time = pd.tseries.offsets.Day(1)
         places = stseries.index.get_level_values('places').unique()
         for place in places:
@@ -62,6 +65,18 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin): # X
         # if self._offset is not None:
         #     X = X.loc[X.index.get_level_values('t').unique()[self._offset]:]
         return X
+
+
+class LatLonFeatures(BaseEstimator, TransformerMixin):
+
+    def __init__(self, grid):
+        self.grid = grid
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, stseries):
+        return stseries.to_frame().join(self.grid[['lon', 'lat']]).drop(columns=0)
 
 
 class AR(TimeSeriesFeatures):
