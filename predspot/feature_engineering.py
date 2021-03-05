@@ -8,7 +8,7 @@ from abc import abstractmethod
 from numpy import vstack
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
-from stldecompose import decompose
+from statsmodels.tsa.seasonal import STL
 
 
 class TimeSeriesFeatures(BaseEstimator, TransformerMixin): # X
@@ -106,7 +106,7 @@ class Seasonality(TimeSeriesFeatures):
         return 'seasonal'
 
     def apply_ts_decomposition(self, ts):
-        return decompose(ts, period=self._lags).seasonal
+        return STL(ts, period=self._lags).seasonal
 
 
 class Trend(TimeSeriesFeatures):
@@ -116,7 +116,7 @@ class Trend(TimeSeriesFeatures):
         return 'trend'
 
     def apply_ts_decomposition(self, ts):
-        return decompose(ts, period=self._lags).trend
+        return STL(ts, period=self._lags).trend
 
 
 class FeatureScaling(TransformerMixin, BaseEstimator):

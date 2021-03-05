@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from sklearn.base import BaseEstimator, TransformerMixin
-from shapely.geometry import Point, Polygon
+from sklearn.cluster import KMeans
+from shapely.geometry import Point, Polygon, MultiPoint
 from scipy.stats import gaussian_kde
 
 pd.options.mode.chained_assignment = None
@@ -52,6 +53,7 @@ def create_hexagon(l, x, y):
 def create_gridhexagonal(bbox, resolution):
     assert resolution > 0, \
         "Invalid resolution."
+    resolution = ((resolution)**2 * (2/(3*(3**0.5)))) ** 0.5 # normalize resolution to have the same area as if it was a square
     assert isinstance(bbox, gpd.GeoDataFrame), \
         'bbox must be geopandas GeoDataFrame.'
     bbox_ = list(bbox.bounds.min().values[:2]) + list(bbox.bounds.max().values[-2:])
@@ -60,7 +62,7 @@ def create_gridhexagonal(bbox, resolution):
     y_min = min(bbox_[1], bbox_[3])
     y_max = max(bbox_[1], bbox_[3])
     grid = []
-    resolution = resolution/110
+    resolution = resolution/110.6
     v_step = math.sqrt(3) * resolution
     h_step = 1.5 * resolution
     h_skip = math.ceil(x_min / h_step) - 1
@@ -94,10 +96,158 @@ def create_gridhexagonal(bbox, resolution):
     return grid
 
 
+def create_gridsquares(city_shape, resolution=1):
+    """It constructs a grid of square cells.
+
+    Parameters
+    ----------
+    city_shape : GeoDataFrame.
+        Corresponds to the boundary geometry in which the grid will be formed.
+
+    resolution : float, default is 1.
+        Space between the square cells.
+    """
+    x0 = city_shape.bounds.min().values[0]
+    xf = city_shape.bounds.max().values[2]
+    y0 = city_shape.bounds.min().values[1]
+    yf = city_shape.bounds.max().values[3]
+    n_y = int((yf-y0)/(resolution/110.57))
+    n_x = int((xf-x0)/(resolution/111.32))
+    grid = {}
+    c = 0
+    for i in range(n_x):
+        for j in range(n_y):
+            grid[c] = {'geometry':Polygon([[x0,y0],
+                            [x0+(resolution/111.32),y0],
+                            [x0+(resolution/111.32),y0+(resolution/110.57)],
+                            [x0,y0+(resolution/110.57)]])}
+            c += 1
+            y0 += resolution/110.57
+        y0 = city_shape.bounds.min().values[1]
+        x0 += resolution/111.32
+    grid = pd.DataFrame(grid).transpose()
+    grid = gpd.GeoDataFrame(grid, geometry='geometry', crs={'init':'epsg:4326'})
+    grid = gpd.sjoin(grid, city_shape, op='intersects')
+    return grid[~grid.index.duplicated()]
+
+
+def create_gridsquares(city_shape, resolution=1):
+    """It constructs a grid of square cells.
+
+    Parameters
+    ----------
+    city_shape : GeoDataFrame.
+        Corresponds to the boundary geometry in which the grid will be formed.
+
+    resolution : float, default is 1.
+        Space between the square cells.
+    """
+    x0 = city_shape.bounds.min().values[0]
+    xf = city_shape.bounds.max().values[2]
+    y0 = city_shape.bounds.min().values[1]
+    yf = city_shape.bounds.max().values[3]
+    n_y = int((yf-y0)/(resolution/110.57))
+    n_x = int((xf-x0)/(resolution/111.32))
+    grid = {}
+    c = 0
+    for i in range(n_x):
+        for j in range(n_y):
+            grid[c] = {'geometry':Polygon([[x0,y0],
+                            [x0+(resolution/111.32),y0],
+                            [x0+(resolution/111.32),y0+(resolution/110.57)],
+                            [x0,y0+(resolution/110.57)]])}
+            c += 1
+            y0 += resolution/110.57
+        y0 = city_shape.bounds.min().values[1]
+        x0 += resolution/111.32
+    grid = pd.DataFrame(grid).transpose()
+    grid = gpd.GeoDataFrame(grid, geometry='geometry', crs={'init':'epsg:4326'})
+    grid = gpd.sjoin(grid, city_shape, op='intersects')[grid.columns]
+    grid['lat'] = grid.centroid.y
+    grid['lon'] = grid.centroid.x
+    grid.index.name = 'places'
+    return grid[~grid.index.duplicated()]
+
+
+class QuadratCount(BaseEstimator, TransformerMixin):
+
+    def __init__(self, tfreq, grid, filter_place_ratio=0.9):
+        self._tfreq = tfreq
+        self._grid = grid
+        self._filter_place_ratio = filter_place_ratio # pct of timestamps with at least one crime
+
+    def fit(self, x=None, y=None):
+        return self
+
+    def transform(self, data_points):
+        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
+                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
+                    .size().unstack(fill_value=0).stack()
+        stseries.index.names = ['t', 'places']
+        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
+        n_timestamps = len(stseries.index.get_level_values('t').unique())
+        c_places = c_places.loc[c_places < self._filter_place_ratio * n_timestamps].index
+        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
+        self._grid = self._grid.loc[c_places]
+        return stseries
+
+
+class QuadratCount2(BaseEstimator, TransformerMixin):
+
+    def __init__(self, tfreq, grid, filter_place_ratio=0.9):
+        self._tfreq = tfreq
+        self._grid = grid
+        self._filter_place_ratio = filter_place_ratio # pct of timestamps with at least one crime
+
+
+    def transform(self, data_points):
+        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
+                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
+                    .size().unstack(fill_value=0).stack()
+        stseries.index.names = ['t', 'places']
+        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
+        n_timestamps = len(stseries.index.get_level_values('t').unique())
+        c_places = c_places.loc[c_places < self._filter_place_ratio * n_timestamps].index
+        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
+        self._grid = self._grid.loc[c_places]
+        return stseries
+
+
+class KGrid:
+
+    def __init__(self, k, tfreq):
+        self._K = k
+        self._tfreq = tfreq
+
+    def fit(self, data_points):
+        self.km = KMeans(self._K).fit(data_points[['lat','lon']])
+        crime_data = data_points.copy(deep=True)
+        crime_data['K'] = self.km.labels_
+        self._grid = gpd.GeoDataFrame(geometry=crime_data.groupby('K')\
+            .apply(lambda x: MultiPoint(list(x['geometry'])).convex_hull))
+        self._grid.crs = crime_data.crs
+        crimes_per_cell = gpd.sjoin(crime_data, self._grid)\
+                             .groupby('index_right').size()
+        self._grid = self._grid.loc[crimes_per_cell > crimes_per_cell.mean()]
+        return self
+
+    def transform(self, data_points):
+        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
+                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
+                    .size().unstack(fill_value=0).stack()
+        stseries.index.names = ['t', 'places']
+        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
+        n_timestamps = len(stseries.index.get_level_values('t').unique())
+        c_places = c_places.loc[c_places < 0.9 * n_timestamps].index
+        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
+        self._grid = self._grid.loc[c_places]
+        return stseries
+
+
 class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator): # y
 
     def __init__(self, tfreq, grid, start_time=False, end_time=False):
-        assert tfreq.upper() in ['M', 'W', 'D'], \
+        assert isinstance(tfreq, str) and tfreq.upper() in ['M', 'W', 'D'], \
             "Invalid tfreq. Please choose (m)onthly, (w)eekly or (d)aily."
         assert all([x in grid.columns for x in ['geometry', 'lon', 'lat']]), \
             "Input grid must have `geometry`, `lon` and `lat` columns."
@@ -122,7 +272,7 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator): # y
             self._start_time = chunks.index.min()
         if not self._end_time:
             self._end_time = chunks.index.max()
-        times_between = pd.date_range(self._start_time, self._end_time, freq='M')
+        times_between = pd.date_range(self._start_time, self._end_time, freq=self._tfreq)
         no_data = {cell:0 for cell in self._grid.index}
         times_no_data = set(times_between) - set(chunks.index)
         if len(times_no_data) == 0:
