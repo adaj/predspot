@@ -30,7 +30,7 @@ def create_gridpoints(bbox, resolution, return_coords=False):
                               columns=['lon', 'lat'])
     gridpoints['geometry'] = gridpoints.apply(lambda x: Point([x['lon'], x['lat']]),
                                               axis=1)
-    gridpoints = gpd.GeoDataFrame(gridpoints)
+    gridpoints = gpd.GeoDataFrame(gridpoints, crs={'init': 'epsg:4326'})
     gridpoints = gridpoints.to_crs(bbox.crs)
     grid_ix = gpd.sjoin(gridpoints, bbox, op='intersects').index.unique()
     if len(grid_ix) == 0:
@@ -86,7 +86,7 @@ def create_gridhexagonal(bbox, resolution):
         c_x += h_step
         c_y = v_start_array[v_start_idx]
         v_start_idx = (v_start_idx + 1) % 2
-    grid = gpd.GeoDataFrame(geometry=grid).reset_index()
+    grid = gpd.GeoDataFrame(geometry=grid, crs={'init': 'epsg:4326'}).reset_index()
     grid = grid.rename(columns={'index':'places'}).set_index('places')
     if isinstance(bbox, gpd.GeoDataFrame):
         grid = gpd.sjoin(grid, bbox, op='intersects')[grid.columns].drop_duplicates()
@@ -126,7 +126,7 @@ def create_gridsquares(city_shape, resolution=1):
         y0 = city_shape.bounds.min().values[1]
         x0 += resolution/111.32
     grid = pd.DataFrame(grid).transpose()
-    grid = gpd.GeoDataFrame(grid, geometry='geometry')
+    grid = gpd.GeoDataFrame(grid, crs={'init': 'epsg:4326'})
     grid = grid.to_crs(city_shape.crs)
     grid = gpd.sjoin(grid, city_shape, op='intersects')[grid.columns]
     grid['lat'] = grid.centroid.y
@@ -189,9 +189,11 @@ class KGrid:
         self.km = KMeans(self._K).fit(data_points[['lat','lon']])
         crime_data = data_points.copy(deep=True)
         crime_data['K'] = self.km.labels_
-        self._grid = gpd.GeoDataFrame(geometry=crime_data.groupby('K')\
-            .apply(lambda x: MultiPoint(list(x['geometry'])).convex_hull))
-        self._grid.crs = crime_data.crs
+        self._grid = gpd.GeoDataFrame(
+            geometry=crime_data.groupby('K')\
+                .apply(lambda x: MultiPoint(list(x['geometry']),
+            crs={'init': 'epsg:4326'}).convex_hull))
+        self._grid = self._grid.to_crs(crime_data.crs)
         crimes_per_cell = gpd.sjoin(crime_data, self._grid)\
                              .groupby('index_right').size()
         self._grid = self._grid.loc[crimes_per_cell > crimes_per_cell.mean()]
