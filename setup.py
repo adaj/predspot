@@ -16,7 +16,7 @@ setup(
         'contextily',
         'geojsoncontour',
         'geopandas'
-    ]
+    ],
     classifiers=[
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License'
