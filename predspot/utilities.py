@@ -13,10 +13,10 @@ from numpy import zeros, linspace, ceil, meshgrid
 from sklearn.pipeline import FeatureUnion, Pipeline, _fit_transform_one, _transform_one
 from joblib import Parallel, delayed
 from scipy import sparse
-import geojsoncontour
 
 
 def contour_geojson(y, bbox, resolution, cmin, cmax):
+    import geojsoncontour
     assert isinstance(bbox, GeoDataFrame)
     bounds = bbox.bounds
     b_s, b_w = bounds.min().values[1], bounds.min().values[0]

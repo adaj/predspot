@@ -1,5 +1,5 @@
-predspot/__pycache__
 *.pyc
 *__pycache__*
 *.geojson
 *.csv
+*.DS_Store

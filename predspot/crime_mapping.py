@@ -31,7 +31,7 @@ def create_gridpoints(bbox, resolution, return_coords=False):
     gridpoints['geometry'] = gridpoints.apply(lambda x: Point([x['lon'], x['lat']]),
                                               axis=1)
     gridpoints = gpd.GeoDataFrame(gridpoints)
-    gridpoints.crs = bbox.crs
+    gridpoints = gridpoints.to_crs(bbox.crs)
     grid_ix = gpd.sjoin(gridpoints, bbox, op='intersects').index.unique()
     if len(grid_ix) == 0:
         raise Exception("resolution too big/coarse. No cells were generated.")
@@ -88,9 +88,9 @@ def create_gridhexagonal(bbox, resolution):
         v_start_idx = (v_start_idx + 1) % 2
     grid = gpd.GeoDataFrame(geometry=grid).reset_index()
     grid = grid.rename(columns={'index':'places'}).set_index('places')
-    grid.crs = bbox.crs
     if isinstance(bbox, gpd.GeoDataFrame):
         grid = gpd.sjoin(grid, bbox, op='intersects')[grid.columns].drop_duplicates()
+        grid = grid.to_crs(bbox.crs)
     grid['lon'] = grid['geometry'].centroid.x
     grid['lat'] = grid['geometry'].centroid.y
     return grid
@@ -126,42 +126,8 @@ def create_gridsquares(city_shape, resolution=1):
         y0 = city_shape.bounds.min().values[1]
         x0 += resolution/111.32
     grid = pd.DataFrame(grid).transpose()
-    grid = gpd.GeoDataFrame(grid, geometry='geometry', crs={'init':'epsg:4326'})
-    grid = gpd.sjoin(grid, city_shape, op='intersects')
-    return grid[~grid.index.duplicated()]
-
-
-def create_gridsquares(city_shape, resolution=1):
-    """It constructs a grid of square cells.
-
-    Parameters
-    ----------
-    city_shape : GeoDataFrame.
-        Corresponds to the boundary geometry in which the grid will be formed.
-
-    resolution : float, default is 1.
-        Space between the square cells.
-    """
-    x0 = city_shape.bounds.min().values[0]
-    xf = city_shape.bounds.max().values[2]
-    y0 = city_shape.bounds.min().values[1]
-    yf = city_shape.bounds.max().values[3]
-    n_y = int((yf-y0)/(resolution/110.57))
-    n_x = int((xf-x0)/(resolution/111.32))
-    grid = {}
-    c = 0
-    for i in range(n_x):
-        for j in range(n_y):
-            grid[c] = {'geometry':Polygon([[x0,y0],
-                            [x0+(resolution/111.32),y0],
-                            [x0+(resolution/111.32),y0+(resolution/110.57)],
-                            [x0,y0+(resolution/110.57)]])}
-            c += 1
-            y0 += resolution/110.57
-        y0 = city_shape.bounds.min().values[1]
-        x0 += resolution/111.32
-    grid = pd.DataFrame(grid).transpose()
-    grid = gpd.GeoDataFrame(grid, geometry='geometry', crs={'init':'epsg:4326'})
+    grid = gpd.GeoDataFrame(grid, geometry='geometry')
+    grid = grid.to_crs(city_shape.crs)
     grid = gpd.sjoin(grid, city_shape, op='intersects')[grid.columns]
     grid['lat'] = grid.centroid.y
     grid['lon'] = grid.centroid.x

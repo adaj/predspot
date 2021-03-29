@@ -1,0 +1,7 @@
+scikit-learn
+matplotlib
+statsmodels==0.12.1
+rtree
+contextily
+geojsoncontour
+geopandas
