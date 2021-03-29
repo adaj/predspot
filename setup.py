@@ -7,7 +7,7 @@ setup(
     url='https://github.com/adaj/predspot',
     author="Adelson Araujo",
     author_email='adelson.dias@gmail.com',
-    # packages=setuptools.find_packages(),
+    packages=['predspot'],
     install_requires=[
         'scikit-learn',
         'matplotlib',
