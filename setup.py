@@ -19,7 +19,7 @@ setup(
     ],
     classifiers=[
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: MIT License'
+        'License :: BSD 3-Clause License'
     ],
-    python_requires='>=3.7'
+    # python_requires='==3.8'
 )
