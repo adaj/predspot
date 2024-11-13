@@ -1,6 +1,11 @@
 """
-Crime Mapping
+Crime Mapping Module
+
+This module provides functionality for spatial and temporal crime mapping analysis.
+It includes utilities for creating grid points, hexagonal grids, and implementing
+kernel density estimation for crime hotspot detection.
 """
+
 __author__ = 'Adelson Araujo'
 from abc import ABC, abstractmethod
 import math
@@ -14,7 +19,22 @@ from scipy.stats import gaussian_kde
 pd.options.mode.chained_assignment = None
 
 
-def create_gridpoints(bbox, resolution, return_coords=False):
+def create_gridpoints(bbox, resolution, return_coords=False, debug=False):
+    """
+    Create a grid of points within a given bounding box.
+
+    Args:
+        bbox (GeoDataFrame): Bounding box as a GeoDataFrame
+        resolution (float): Grid cell size in kilometers
+        return_coords (bool): If True, returns additional coordinate arrays
+        debug (bool): Enable debug printing
+
+    Returns:
+        GeoDataFrame or tuple: Grid points as GeoDataFrame, optionally with coordinate arrays
+    """
+    if debug:
+        print(f"Creating grid with resolution: {resolution}km", flush=True)
+    
     assert resolution > 0, \
         "Invalid resolution."
     assert isinstance(bbox, gpd.GeoDataFrame), \
@@ -45,6 +65,17 @@ def create_gridpoints(bbox, resolution, return_coords=False):
 
 
 def create_hexagon(l, x, y):
+    """
+    Create a hexagonal polygon.
+
+    Args:
+        l (float): Length of hexagon side
+        x (float): X-coordinate of center
+        y (float): Y-coordinate of center
+
+    Returns:
+        Polygon: Hexagonal polygon
+    """
     c = [[x + math.cos(math.radians(angle)) * l, y + math.sin(math.radians(angle)) * l] for angle in range(0, 360, 60)]
     return Polygon(c)
 
@@ -95,8 +126,20 @@ def create_gridhexagonal(bbox, resolution):
 
 
 class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator): # y
+    """
+    Abstract base class for spatio-temporal crime mapping.
 
-    def __init__(self, tfreq, grid, start_time=False, end_time=False):
+    Args:
+        tfreq (str): Time frequency ('M' for monthly, 'W' for weekly, 'D' for daily)
+        grid (GeoDataFrame): Spatial grid for analysis
+        start_time (str or datetime, optional): Analysis start time
+        end_time (str or datetime, optional): Analysis end time
+    """
+
+    def __init__(self, tfreq, grid, start_time=False, end_time=False, debug=False):
+        self.debug = debug
+        if self.debug:
+            print(f"Initializing SpatioTemporalMapping with frequency: {tfreq}", flush=True)
         assert tfreq.upper() in ['M', 'W', 'D'], \
             "Invalid tfreq. Please choose (m)onthly, (w)eekly or (d)aily."
         assert all([x in grid.columns for x in ['geometry', 'lon', 'lat']]), \
@@ -150,13 +193,40 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator): # y
 
 
 class KDE(SpatioTemporalMapping): # y
+    """
+    Kernel Density Estimation for crime hotspot detection.
 
-    def __init__(self, tfreq, grid, start_time=False, end_time=False, bandwidth='silverman'):
+    Args:
+        tfreq (str): Time frequency ('M' for monthly, 'W' for weekly, 'D' for daily)
+        grid (GeoDataFrame): Spatial grid for analysis
+        start_time (str or datetime, optional): Analysis start time
+        end_time (str or datetime, optional): Analysis end time
+        bandwidth (str or float): Bandwidth method ('silverman' or numeric value)
+    """
+
+    def __init__(self, tfreq, grid, start_time=False, end_time=False, bandwidth='silverman', debug=False):
         super().__init__(tfreq, grid, start_time, end_time)
+        self.debug = debug
         self._bandwidth = bandwidth
         self._kernel = None
+        
+        if self.debug:
+            print(f"Initializing KDE with bandwidth: {bandwidth}", flush=True)
 
     def fit_grid(self, data_points, as_df=False):
+        """
+        Fit the kernel density estimation to grid points.
+
+        Args:
+            data_points (GeoDataFrame): Crime incident points
+            as_df (bool): If True, return results as DataFrame
+
+        Returns:
+            dict or DataFrame: Density estimates for grid points
+        """
+        if self.debug:
+            print(f"Fitting KDE grid with {len(data_points)} points", flush=True)
+        
         if len(data_points) < 3:
             crime_density = pd.DataFrame([0]*len(self._grid.index),
                                          index=self._grid.index,
