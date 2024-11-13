@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>predspot.crime_mapping &#8212; Predspot 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=c18062d5" />
+    <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="canonical" href="https://adaj.github.io/predspot/_modules/predspot/crime_mapping.html" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">Predspot</a></h1>
+
+
+
+<p class="blurb">Crime hotspot prediction using machine learning</p>
+
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=adaj&repo=predspot&type=star&count=True&size=large&v=2"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/crime_mapping.html">Crime Mapping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/dataset_preparation.html">Dataset Preparation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/feature_engineering.html">Feature Engineering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/ml_modelling.html">ML Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/utilities.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/pipeline.html">Pipeline</a></li>
+</ul>
+
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://github.com/adaj/predspot">Project Github</a></li>
+    
+    <li class="toctree-l1"><a href="https://adaj.github.io/predspot/">Documentation</a></li>
+    
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+              <div class="related top">
+                &nbsp;
+  <nav id="rellinks">
+    <ul>
+    </ul>
+  </nav>
+              </div>
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for predspot.crime_mapping</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Crime Mapping Module</span>
+
+<span class="sd">This module provides functionality for spatial and temporal crime mapping analysis.</span>
+<span class="sd">It includes utilities for creating grid points, hexagonal grids, and implementing</span>
+<span class="sd">kernel density estimation for crime hotspot detection.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">__author__</span> <span class="o">=</span> <span class="s1">&#39;Adelson Araujo&#39;</span>
+<span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">geopandas</span> <span class="k">as</span> <span class="nn">gpd</span>
+<span class="kn">from</span> <span class="nn">sklearn.base</span> <span class="kn">import</span> <span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span>
+<span class="kn">from</span> <span class="nn">sklearn.cluster</span> <span class="kn">import</span> <span class="n">KMeans</span>
+<span class="kn">from</span> <span class="nn">shapely.geometry</span> <span class="kn">import</span> <span class="n">Point</span><span class="p">,</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">MultiPoint</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">gaussian_kde</span>
+
+<span class="n">pd</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">mode</span><span class="o">.</span><span class="n">chained_assignment</span> <span class="o">=</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="create_gridpoints">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.create_gridpoints">[docs]</a>
+<span class="k">def</span> <span class="nf">create_gridpoints</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="n">resolution</span><span class="p">,</span> <span class="n">return_coords</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a grid of points within a given bounding box.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bbox (GeoDataFrame): Bounding box as a GeoDataFrame</span>
+<span class="sd">        resolution (float): Grid cell size in kilometers</span>
+<span class="sd">        return_coords (bool): If True, returns additional coordinate arrays</span>
+<span class="sd">        debug (bool): Enable debug printing</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        GeoDataFrame or tuple: Grid points as GeoDataFrame, optionally with coordinate arrays</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Creating grid with resolution: </span><span class="si">{</span><span class="n">resolution</span><span class="si">}</span><span class="s2">km&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="k">assert</span> <span class="n">resolution</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> \
+        <span class="s2">&quot;Invalid resolution.&quot;</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">),</span> \
+        <span class="s1">&#39;bbox must be geopandas GeoDataFrame.&#39;</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">bbox</span><span class="o">.</span><span class="n">bounds</span>
+    <span class="n">b_s</span><span class="p">,</span> <span class="n">b_w</span> <span class="o">=</span> <span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">b_n</span><span class="p">,</span> <span class="n">b_e</span> <span class="o">=</span> <span class="n">bounds</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">bounds</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">nlon</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">((</span><span class="n">b_e</span><span class="o">-</span><span class="n">b_w</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">111.32</span><span class="p">)))</span>
+    <span class="n">nlat</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">((</span><span class="n">b_n</span><span class="o">-</span><span class="n">b_s</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">110.57</span><span class="p">)))</span>
+    <span class="n">lonv</span><span class="p">,</span> <span class="n">latv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">b_w</span><span class="p">,</span> <span class="n">b_e</span><span class="p">,</span> <span class="n">nlon</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">b_s</span><span class="p">,</span> <span class="n">b_n</span><span class="p">,</span> <span class="n">nlat</span><span class="p">))</span>
+    <span class="n">gridpoints</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">lonv</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">latv</span><span class="o">.</span><span class="n">ravel</span><span class="p">()])</span><span class="o">.</span><span class="n">T</span><span class="p">,</span>
+                              <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">,</span> <span class="s1">&#39;lat&#39;</span><span class="p">])</span>
+    <span class="n">gridpoints</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gridpoints</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">Point</span><span class="p">([</span><span class="n">x</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">]]),</span>
+                                              <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">gridpoints</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">gridpoints</span><span class="p">)</span>
+    <span class="n">gridpoints</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;init&#39;</span><span class="p">:</span> <span class="s1">&#39;epsg:4326&#39;</span><span class="p">}</span>
+    <span class="n">gridpoints</span> <span class="o">=</span> <span class="n">gridpoints</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+    <span class="n">grid_ix</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">gridpoints</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="s1">&#39;intersects&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">grid_ix</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;resolution too big/coarse. No cells were generated.&quot;</span><span class="p">)</span>
+    <span class="c1"># elif len(grid_ix) / bbox.area.sum() &gt; 10:</span>
+    <span class="c1">#     warnings.warn(&#39;resolution too fine/small. As consequence, your program&#39; \</span>
+    <span class="c1">#         + &#39;may run very slowly.&#39;)</span>
+    <span class="n">gridpoints</span> <span class="o">=</span> <span class="n">gridpoints</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">grid_ix</span><span class="p">]</span>
+    <span class="n">gridpoints</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;places&#39;</span>
+    <span class="k">if</span> <span class="n">return_coords</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">gridpoints</span><span class="p">,</span> <span class="n">lonv</span><span class="p">,</span> <span class="n">latv</span>
+    <span class="k">return</span> <span class="n">gridpoints</span></div>
+
+
+
+<div class="viewcode-block" id="create_hexagon">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.create_hexagon">[docs]</a>
+<span class="k">def</span> <span class="nf">create_hexagon</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a hexagonal polygon.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        l (float): Length of hexagon side</span>
+<span class="sd">        x (float): X-coordinate of center</span>
+<span class="sd">        y (float): Y-coordinate of center</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Polygon: Hexagonal polygon</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="p">[[</span><span class="n">x</span> <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">angle</span><span class="p">))</span> <span class="o">*</span> <span class="n">l</span><span class="p">,</span> <span class="n">y</span> <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">angle</span><span class="p">))</span> <span class="o">*</span> <span class="n">l</span><span class="p">]</span> <span class="k">for</span> <span class="n">angle</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="mi">60</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">c</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="create_gridhexagonal">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.create_gridhexagonal">[docs]</a>
+<span class="k">def</span> <span class="nf">create_gridhexagonal</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="n">resolution</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">resolution</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> \
+        <span class="s2">&quot;Invalid resolution.&quot;</span>
+    <span class="n">resolution</span> <span class="o">=</span> <span class="p">((</span><span class="n">resolution</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span><span class="o">/</span><span class="p">(</span><span class="mi">3</span><span class="o">*</span><span class="p">(</span><span class="mi">3</span><span class="o">**</span><span class="mf">0.5</span><span class="p">))))</span> <span class="o">**</span> <span class="mf">0.5</span> <span class="c1"># normalize resolution to have the same area as if it was a square</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">),</span> \
+        <span class="s1">&#39;bbox must be geopandas GeoDataFrame.&#39;</span>
+    <span class="n">bbox_</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[:</span><span class="mi">2</span><span class="p">])</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:])</span>
+    <span class="n">x_min</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">bbox_</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">bbox_</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+    <span class="n">x_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">bbox_</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">bbox_</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+    <span class="n">y_min</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">bbox_</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">bbox_</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+    <span class="n">y_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">bbox_</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">bbox_</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">resolution</span> <span class="o">=</span> <span class="n">resolution</span><span class="o">/</span><span class="mf">110.6</span>
+    <span class="n">v_step</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="n">resolution</span>
+    <span class="n">h_step</span> <span class="o">=</span> <span class="mf">1.5</span> <span class="o">*</span> <span class="n">resolution</span>
+    <span class="n">h_skip</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">x_min</span> <span class="o">/</span> <span class="n">h_step</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">h_start</span> <span class="o">=</span> <span class="n">h_skip</span> <span class="o">*</span> <span class="n">h_step</span>
+    <span class="n">v_skip</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">y_min</span> <span class="o">/</span> <span class="n">v_step</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">v_start</span> <span class="o">=</span> <span class="n">v_skip</span> <span class="o">*</span> <span class="n">v_step</span>
+    <span class="n">h_end</span> <span class="o">=</span> <span class="n">x_max</span> <span class="o">+</span> <span class="n">h_step</span>
+    <span class="n">v_end</span> <span class="o">=</span> <span class="n">y_max</span> <span class="o">+</span> <span class="n">v_step</span>
+    <span class="k">if</span> <span class="n">v_start</span> <span class="o">-</span> <span class="p">(</span><span class="n">v_step</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">y_min</span><span class="p">:</span>
+        <span class="n">v_start_array</span> <span class="o">=</span> <span class="p">[</span><span class="n">v_start</span> <span class="o">+</span> <span class="p">(</span><span class="n">v_step</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">),</span> <span class="n">v_start</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">v_start_array</span> <span class="o">=</span> <span class="p">[</span><span class="n">v_start</span> <span class="o">-</span> <span class="p">(</span><span class="n">v_step</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">),</span> <span class="n">v_start</span><span class="p">]</span>
+    <span class="n">v_start_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">h_skip</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">c_x</span> <span class="o">=</span> <span class="n">h_start</span>
+    <span class="n">c_y</span> <span class="o">=</span> <span class="n">v_start_array</span><span class="p">[</span><span class="n">v_start_idx</span><span class="p">]</span>
+    <span class="n">v_start_idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">v_start_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span>
+    <span class="k">while</span> <span class="n">c_x</span> <span class="o">&lt;</span> <span class="n">h_end</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">c_y</span> <span class="o">&lt;</span> <span class="n">v_end</span><span class="p">:</span>
+            <span class="n">grid</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">create_hexagon</span><span class="p">(</span><span class="n">resolution</span><span class="p">,</span> <span class="n">c_x</span><span class="p">,</span> <span class="n">c_y</span><span class="p">))</span>
+            <span class="n">c_y</span> <span class="o">+=</span> <span class="n">v_step</span>
+        <span class="n">c_x</span> <span class="o">+=</span> <span class="n">h_step</span>
+        <span class="n">c_y</span> <span class="o">=</span> <span class="n">v_start_array</span><span class="p">[</span><span class="n">v_start_idx</span><span class="p">]</span>
+        <span class="n">v_start_idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">v_start_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">geometry</span><span class="o">=</span><span class="n">grid</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+    <span class="n">grid</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;init&#39;</span><span class="p">:</span> <span class="s1">&#39;epsg:4326&#39;</span><span class="p">}</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;index&#39;</span><span class="p">:</span><span class="s1">&#39;places&#39;</span><span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;places&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">):</span>
+        <span class="n">grid</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="s1">&#39;intersects&#39;</span><span class="p">)[</span><span class="n">grid</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">()</span>
+        <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+    <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span>
+    <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span>
+    <span class="k">return</span> <span class="n">grid</span></div>
+
+
+
+<div class="viewcode-block" id="create_gridsquares">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.create_gridsquares">[docs]</a>
+<span class="k">def</span> <span class="nf">create_gridsquares</span><span class="p">(</span><span class="n">city_shape</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;It constructs a grid of square cells.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    city_shape : GeoDataFrame.</span>
+<span class="sd">        Corresponds to the boundary geometry in which the grid will be formed.</span>
+
+<span class="sd">    resolution : float, default is 1.</span>
+<span class="sd">        Space between the square cells.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x0</span> <span class="o">=</span> <span class="n">city_shape</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">xf</span> <span class="o">=</span> <span class="n">city_shape</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">y0</span> <span class="o">=</span> <span class="n">city_shape</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">yf</span> <span class="o">=</span> <span class="n">city_shape</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+    <span class="n">n_y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">yf</span><span class="o">-</span><span class="n">y0</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">110.57</span><span class="p">))</span>
+    <span class="n">n_x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">xf</span><span class="o">-</span><span class="n">x0</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">111.32</span><span class="p">))</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_x</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_y</span><span class="p">):</span>
+            <span class="n">grid</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;geometry&#39;</span><span class="p">:</span><span class="n">Polygon</span><span class="p">([[</span><span class="n">x0</span><span class="p">,</span><span class="n">y0</span><span class="p">],</span>
+                            <span class="p">[</span><span class="n">x0</span><span class="o">+</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">111.32</span><span class="p">),</span><span class="n">y0</span><span class="p">],</span>
+                            <span class="p">[</span><span class="n">x0</span><span class="o">+</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">111.32</span><span class="p">),</span><span class="n">y0</span><span class="o">+</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">110.57</span><span class="p">)],</span>
+                            <span class="p">[</span><span class="n">x0</span><span class="p">,</span><span class="n">y0</span><span class="o">+</span><span class="p">(</span><span class="n">resolution</span><span class="o">/</span><span class="mf">110.57</span><span class="p">)]])}</span>
+            <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">y0</span> <span class="o">+=</span> <span class="n">resolution</span><span class="o">/</span><span class="mf">110.57</span>
+        <span class="n">y0</span> <span class="o">=</span> <span class="n">city_shape</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">x0</span> <span class="o">+=</span> <span class="n">resolution</span><span class="o">/</span><span class="mf">111.32</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>
+    <span class="n">grid</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;init&#39;</span><span class="p">:</span> <span class="s1">&#39;epsg:4326&#39;</span><span class="p">}</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">city_shape</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">city_shape</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="s1">&#39;intersects&#39;</span><span class="p">)[</span><span class="n">grid</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+    <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span>
+    <span class="n">grid</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span>
+    <span class="n">grid</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;places&#39;</span>
+    <span class="k">return</span> <span class="n">grid</span><span class="p">[</span><span class="o">~</span><span class="n">grid</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">duplicated</span><span class="p">()]</span></div>
+
+
+
+<div class="viewcode-block" id="QuadratCount">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.QuadratCount">[docs]</a>
+<span class="k">class</span> <span class="nc">QuadratCount</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tfreq</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">filter_place_ratio</span><span class="o">=</span><span class="mf">0.9</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span> <span class="o">=</span> <span class="n">tfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="n">grid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_filter_place_ratio</span> <span class="o">=</span> <span class="n">filter_place_ratio</span> <span class="c1"># pct of timestamps with at least one crime</span>
+
+<div class="viewcode-block" id="QuadratCount.fit">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.QuadratCount.fit">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="QuadratCount.transform">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.QuadratCount.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">data_points</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span>\
+                    <span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="n">pd</span><span class="o">.</span><span class="n">Grouper</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span><span class="p">),</span> <span class="s1">&#39;index_right&#39;</span><span class="p">])</span>\
+                    <span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">unstack</span><span class="p">(</span><span class="n">fill_value</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">stack</span><span class="p">()</span>
+        <span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;places&#39;</span><span class="p">]</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s1">&#39;places&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="n">n_timestamps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">c_places</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_filter_place_ratio</span> <span class="o">*</span> <span class="n">n_timestamps</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">IndexSlice</span><span class="p">[:,</span> <span class="n">c_places</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">stseries</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="QuadratCount2">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.QuadratCount2">[docs]</a>
+<span class="k">class</span> <span class="nc">QuadratCount2</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tfreq</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">filter_place_ratio</span><span class="o">=</span><span class="mf">0.9</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span> <span class="o">=</span> <span class="n">tfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="n">grid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_filter_place_ratio</span> <span class="o">=</span> <span class="n">filter_place_ratio</span> <span class="c1"># pct of timestamps with at least one crime</span>
+
+
+<div class="viewcode-block" id="QuadratCount2.transform">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.QuadratCount2.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">data_points</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span>\
+                    <span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="n">pd</span><span class="o">.</span><span class="n">Grouper</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span><span class="p">),</span> <span class="s1">&#39;index_right&#39;</span><span class="p">])</span>\
+                    <span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">unstack</span><span class="p">(</span><span class="n">fill_value</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">stack</span><span class="p">()</span>
+        <span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;places&#39;</span><span class="p">]</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s1">&#39;places&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="n">n_timestamps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">c_places</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_filter_place_ratio</span> <span class="o">*</span> <span class="n">n_timestamps</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">IndexSlice</span><span class="p">[:,</span> <span class="n">c_places</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">stseries</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="KGrid">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.KGrid">[docs]</a>
+<span class="k">class</span> <span class="nc">KGrid</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">tfreq</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_K</span> <span class="o">=</span> <span class="n">k</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span> <span class="o">=</span> <span class="n">tfreq</span>
+
+<div class="viewcode-block" id="KGrid.fit">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.KGrid.fit">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">km</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_K</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data_points</span><span class="p">[[</span><span class="s1">&#39;lat&#39;</span><span class="p">,</span><span class="s1">&#39;lon&#39;</span><span class="p">]])</span>
+        <span class="n">crime_data</span> <span class="o">=</span> <span class="n">data_points</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">crime_data</span><span class="p">[</span><span class="s1">&#39;K&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">km</span><span class="o">.</span><span class="n">labels_</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span>
+            <span class="n">geometry</span><span class="o">=</span><span class="n">crime_data</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;K&#39;</span><span class="p">)</span>\
+                <span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">MultiPoint</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]))</span><span class="o">.</span><span class="n">convex_hull</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;init&#39;</span><span class="p">:</span> <span class="s1">&#39;epsg:4326&#39;</span><span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">crime_data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+        <span class="n">crimes_per_cell</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">crime_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="p">)</span>\
+                             <span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;index_right&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">size</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">crimes_per_cell</span> <span class="o">&gt;</span> <span class="n">crimes_per_cell</span><span class="o">.</span><span class="n">mean</span><span class="p">()]</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="KGrid.transform">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.KGrid.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">data_points</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span>\
+                    <span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="n">pd</span><span class="o">.</span><span class="n">Grouper</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span><span class="p">),</span> <span class="s1">&#39;index_right&#39;</span><span class="p">])</span>\
+                    <span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">unstack</span><span class="p">(</span><span class="n">fill_value</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">stack</span><span class="p">()</span>
+        <span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;places&#39;</span><span class="p">]</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s1">&#39;places&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="n">n_timestamps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">c_places</span> <span class="o">=</span> <span class="n">c_places</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span> <span class="o">&lt;</span> <span class="mf">0.9</span> <span class="o">*</span> <span class="n">n_timestamps</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">IndexSlice</span><span class="p">[:,</span> <span class="n">c_places</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">c_places</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">stseries</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SpatioTemporalMapping">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping">[docs]</a>
+<span class="k">class</span> <span class="nc">SpatioTemporalMapping</span><span class="p">(</span><span class="n">ABC</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">,</span> <span class="n">BaseEstimator</span><span class="p">):</span> <span class="c1"># y</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Abstract base class for spatio-temporal crime mapping.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tfreq (str): Time frequency (&#39;M&#39; for monthly, &#39;W&#39; for weekly, &#39;D&#39; for daily)</span>
+<span class="sd">        grid (GeoDataFrame): Spatial grid for analysis</span>
+<span class="sd">        start_time (str or datetime, optional): Analysis start time</span>
+<span class="sd">        end_time (str or datetime, optional): Analysis end time</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tfreq</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">start_time</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">end_time</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">debug</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Initializing SpatioTemporalMapping with frequency: </span><span class="si">{</span><span class="n">tfreq</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">tfreq</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;M&#39;</span><span class="p">,</span> <span class="s1">&#39;W&#39;</span><span class="p">,</span> <span class="s1">&#39;D&#39;</span><span class="p">],</span> \
+            <span class="s2">&quot;Invalid tfreq. Please choose (m)onthly, (w)eekly or (d)aily.&quot;</span>
+        <span class="k">assert</span> <span class="nb">all</span><span class="p">([</span><span class="n">x</span> <span class="ow">in</span> <span class="n">grid</span><span class="o">.</span><span class="n">columns</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="s1">&#39;lon&#39;</span><span class="p">,</span> <span class="s1">&#39;lat&#39;</span><span class="p">]]),</span> \
+            <span class="s2">&quot;Input grid must have `geometry`, `lon` and `lat` columns.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span> <span class="o">=</span> <span class="n">tfreq</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span> <span class="o">=</span> <span class="n">grid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start_time</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">start_time</span><span class="p">)</span> <span class="k">if</span> <span class="n">start_time</span> <span class="k">else</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_end_time</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">end_time</span><span class="p">)</span> <span class="k">if</span> <span class="n">end_time</span> <span class="k">else</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="SpatioTemporalMapping.fit_grid">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping.fit_grid">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">fit_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="SpatioTemporalMapping.get_time_data_chunks">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping.get_time_data_chunks">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_time_data_chunks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="n">data_points</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">resample</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span><span class="p">)</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">chunks</span><span class="p">,</span>
+                              <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;crime_chunks&#39;</span><span class="p">])</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="n">chunks</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">chunks</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpatioTemporalMapping.get_times_no_data">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping.get_times_no_data">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_times_no_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunks</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_time</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_start_time</span> <span class="o">=</span> <span class="n">chunks</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_end_time</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_end_time</span> <span class="o">=</span> <span class="n">chunks</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="n">times_between</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">date_range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_start_time</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_end_time</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_tfreq</span><span class="p">)</span>
+        <span class="n">no_data</span> <span class="o">=</span> <span class="p">{</span><span class="n">cell</span><span class="p">:</span><span class="mi">0</span> <span class="k">for</span> <span class="n">cell</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">index</span><span class="p">}</span>
+        <span class="n">times_no_data</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">times_between</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">chunks</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">times_no_data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">chunks</span>
+        <span class="n">times_no_data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">times_no_data</span><span class="p">)</span>
+        <span class="n">times_no_data</span><span class="p">[</span><span class="s1">&#39;crime_density&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">no_data</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">times_no_data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">times_no_data</span></div>
+
+
+<div class="viewcode-block" id="SpatioTemporalMapping.fit">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping.fit">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="SpatioTemporalMapping.transform">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.SpatioTemporalMapping.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">):</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_time_data_chunks</span><span class="p">(</span><span class="n">data_points</span><span class="p">)</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">chunks</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fit_grid</span><span class="p">)</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="s1">&#39;crime_density&#39;</span><span class="p">)</span>
+        <span class="n">times_no_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_times_no_data</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">times_no_data</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunks</span><span class="p">):</span>
+            <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">times_no_data</span><span class="p">)</span>
+        <span class="n">time_ix</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">index</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">json_normalize</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">stseries</span><span class="p">[</span><span class="s1">&#39;crime_density&#39;</span><span class="p">])</span>
+        <span class="n">stseries</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">time_ix</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">unstack</span><span class="p">()</span>
+        <span class="n">stseries</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;places&#39;</span><span class="p">,</span><span class="s1">&#39;t&#39;</span><span class="p">]</span>
+        <span class="n">stseries</span> <span class="o">=</span> <span class="n">stseries</span><span class="o">.</span><span class="n">swaplevel</span><span class="p">()</span><span class="o">.</span><span class="n">sort_index</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">stseries</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="KDE">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.KDE">[docs]</a>
+<span class="k">class</span> <span class="nc">KDE</span><span class="p">(</span><span class="n">SpatioTemporalMapping</span><span class="p">):</span> <span class="c1"># y</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Kernel Density Estimation for crime hotspot detection.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tfreq (str): Time frequency (&#39;M&#39; for monthly, &#39;W&#39; for weekly, &#39;D&#39; for daily)</span>
+<span class="sd">        grid (GeoDataFrame): Spatial grid for analysis</span>
+<span class="sd">        start_time (str or datetime, optional): Analysis start time</span>
+<span class="sd">        end_time (str or datetime, optional): Analysis end time</span>
+<span class="sd">        bandwidth (str or float): Bandwidth method (&#39;silverman&#39; or numeric value)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tfreq</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">start_time</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">end_time</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">bandwidth</span><span class="o">=</span><span class="s1">&#39;silverman&#39;</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">tfreq</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">debug</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_bandwidth</span> <span class="o">=</span> <span class="n">bandwidth</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span> <span class="o">=</span> <span class="kc">None</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Initializing KDE with bandwidth: </span><span class="si">{</span><span class="n">bandwidth</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<div class="viewcode-block" id="KDE.fit_grid">
+<a class="viewcode-back" href="../../modules/crime_mapping.html#predspot.crime_mapping.KDE.fit_grid">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_points</span><span class="p">,</span> <span class="n">as_df</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit the kernel density estimation to grid points.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            data_points (GeoDataFrame): Crime incident points</span>
+<span class="sd">            as_df (bool): If True, return results as DataFrame</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict or DataFrame: Density estimates for grid points</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fitting KDE grid with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">data_points</span><span class="p">)</span><span class="si">}</span><span class="s2"> points&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data_points</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">crime_density</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">index</span><span class="p">),</span>
+                                         <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">index</span><span class="p">,</span>
+                                         <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;crime_density&#39;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_bandwidth</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span> <span class="o">=</span> <span class="n">gaussian_kde</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">data_points</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span><span class="p">,</span>
+                                                    <span class="n">data_points</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span><span class="p">]),</span>
+                                            <span class="n">bw_method</span><span class="o">=</span><span class="s1">&#39;silverman&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_bandwidth</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="o">.</span><span class="n">factor</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span> <span class="o">=</span> <span class="n">gaussian_kde</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">data_points</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span><span class="p">,</span>
+                                                       <span class="n">data_points</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span><span class="p">]),</span>
+                                            <span class="n">bw_method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_bandwidth</span><span class="p">)</span>
+            <span class="n">crime_density</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="p">[[</span><span class="s1">&#39;lon&#39;</span><span class="p">,</span> <span class="s1">&#39;lat&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">T</span><span class="p">),</span>
+                                         <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_grid</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;crime_density&#39;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">as_df</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">crime_density</span>
+        <span class="k">return</span> <span class="n">crime_density</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()[</span><span class="s1">&#39;crime_density&#39;</span><span class="p">]</span></div>
+</div>
+
+</pre></div>
+
+          </div>
+              <div class="related bottom">
+                &nbsp;
+  <nav id="rellinks">
+    <ul>
+    </ul>
+  </nav>
+              </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &#169;2024, Adelson Araujo.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

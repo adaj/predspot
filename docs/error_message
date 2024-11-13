@@ -1,0 +1,57 @@
+Running Sphinx v8.1.3
+loading translations [en]... done
+making output directory... done
+building [mo]: targets for 0 po files that are out of date
+writing output... 
+building [html]: targets for 7 source files that are out of date
+updating environment: [new config] 7 added, 0 changed, 0 removed
+reading sources... [100%] modules/utilities
+looking for now-outdated files... none found
+pickling environment... done
+checking consistency... C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\crime_mapping.rst: WARNING: document isn't included in any toctree
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\dataset_preparation.rst: WARNING: document isn't included in any toctree
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\feature_engineering.rst: WARNING: document isn't included in any toctree
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\ml_modelling.rst: WARNING: document isn't included in any toctree
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\pipeline.rst: WARNING: document isn't included in any toctree
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\source\modules\utilities.rst: WARNING: document isn't included in any toctree
+done
+preparing documents... done
+copying assets... 
+copying static files... 
+Writing evaluated template result to C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\build\html\_static\basic.css
+Writing evaluated template result to C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\build\html\_static\documentation_options.js
+Writing evaluated template result to C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\build\html\_static\language_data.js
+Writing evaluated template result to C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\docs\build\html\_static\alabaster.css
+copying static files: done
+copying extra files... 
+copying extra files: done
+copying assets: done
+writing output... [100%] modules/utilities
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\crime_mapping.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\feature_engineering.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+C:\Users\DiasDeAraujoJunioA\Documents\Repositories\predspot\predspot\ml_modelling.py:docstring of sklearn.utils._metadata_requests.RequestMethod.__get__.<locals>.func:3: WARNING: undefined label: 'metadata_routing' [ref.ref]
+generating indices... genindex done
+highlighting module code... [100%] predspot.utilities
+writing additional pages... search done
+dumping search index in English (code: en)... done
+dumping object inventory... done
+build succeeded, 26 warnings.
+
+The HTML pages are in build\html.
