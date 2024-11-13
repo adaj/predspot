@@ -1,0 +1,8 @@
+pandas
+scikit-learn
+statsmodels==0.12.1
+matplotlib
+seaborn
+geojsoncontour
+descartes
+contextily
