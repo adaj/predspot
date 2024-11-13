@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>predspot.pipeline &#8212; Predspot 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=c18062d5" />
+    <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="canonical" href="https://adaj.github.io/predspot/_modules/predspot/pipeline.html" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">Predspot</a></h1>
+
+
+
+<p class="blurb">Crime hotspot prediction using machine learning</p>
+
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=adaj&repo=predspot&type=star&count=True&size=large&v=2"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/dataset_preparation.html">Dataset Preparation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/crime_mapping.html">Crime Mapping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/feature_engineering.html">Feature Engineering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/ml_modelling.html">ML Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/utilities.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules/pipeline.html">Pipeline</a></li>
+</ul>
+
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://github.com/adaj/predspot">Project Github</a></li>
+    
+    <li class="toctree-l1"><a href="https://adaj.github.io/predspot/">Documentation</a></li>
+    
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+              <div class="related top">
+                &nbsp;
+  <nav id="rellinks">
+    <ul>
+    </ul>
+  </nav>
+              </div>
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for predspot.pipeline</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Pipeline Module</span>
+
+<span class="sd">This module provides the main pipeline functionality for crime prediction,</span>
+<span class="sd">including data loading, preprocessing, and model execution.</span>
+
+<span class="sd">Example:</span>
+<span class="sd">    &gt;&gt;&gt; from predspot.pipeline import generate_testdata, run_prediction_pipeline</span>
+<span class="sd">    &gt;&gt;&gt; crime_data, study_area = generate_testdata(10000, &#39;2020-01-01&#39;, &#39;2020-12-31&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; results = run_prediction_pipeline(crime_data, study_area)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">__author__</span> <span class="o">=</span> <span class="s1">&#39;Adelson Araujo&#39;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">geopandas</span> <span class="k">as</span> <span class="nn">gpd</span>
+<span class="kn">from</span> <span class="nn">sklearn.pipeline</span> <span class="kn">import</span> <span class="n">Pipeline</span>
+<span class="kn">from</span> <span class="nn">sklearn.preprocessing</span> <span class="kn">import</span> <span class="n">QuantileTransformer</span>
+<span class="kn">from</span> <span class="nn">sklearn.feature_selection</span> <span class="kn">import</span> <span class="n">RFE</span>
+<span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestRegressor</span>
+
+<span class="kn">from</span> <span class="nn">predspot</span> <span class="kn">import</span> <span class="n">dataset_preparation</span>
+<span class="kn">from</span> <span class="nn">predspot</span> <span class="kn">import</span> <span class="n">crime_mapping</span>
+<span class="kn">from</span> <span class="nn">predspot</span> <span class="kn">import</span> <span class="n">feature_engineering</span>
+<span class="kn">from</span> <span class="nn">predspot</span> <span class="kn">import</span> <span class="n">ml_modelling</span>
+<span class="kn">from</span> <span class="nn">predspot.utilities</span> <span class="kn">import</span> <span class="n">PandasFeatureUnion</span>
+
+
+<div class="viewcode-block" id="generate_testdata">
+<a class="viewcode-back" href="../../modules/pipeline.html#predspot.pipeline.generate_testdata">[docs]</a>
+<span class="k">def</span> <span class="nf">generate_testdata</span><span class="p">(</span><span class="n">n_points</span><span class="p">,</span> <span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate synthetic crime data for testing.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        n_points (int): Number of crime incidents to generate</span>
+<span class="sd">        start_time (str): Start date in &#39;YYYY-MM-DD&#39; format</span>
+<span class="sd">        end_time (str): End date in &#39;YYYY-MM-DD&#39; format</span>
+<span class="sd">        debug (bool, optional): Enable debug printing. Defaults to False</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (crimes_df, study_area_gdf) - Generated crime data and study area</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; crimes, area = generate_testdata(1000, &#39;2020-01-01&#39;, &#39;2020-12-31&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generating </span><span class="si">{</span><span class="n">n_points</span><span class="si">}</span><span class="s2"> test data points from </span><span class="si">{</span><span class="n">start_time</span><span class="si">}</span><span class="s2"> to </span><span class="si">{</span><span class="n">end_time</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">study_area</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">gpd</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">get_path</span><span class="p">(</span><span class="s1">&#39;naturalearth_lowres&#39;</span><span class="p">))</span>
+    <span class="n">study_area</span> <span class="o">=</span> <span class="n">study_area</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">study_area</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="o">==</span><span class="s1">&#39;Brazil&#39;</span><span class="p">]</span>
+
+    <span class="n">crimes</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+    <span class="n">crime_types</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s1">&#39;burglary&#39;</span><span class="p">,</span> <span class="s1">&#39;assault&#39;</span><span class="p">,</span> <span class="s1">&#39;drugs&#39;</span><span class="p">,</span> <span class="s1">&#39;homicide&#39;</span><span class="p">])</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">study_area</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Generating random dates and locations&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">random_dates</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate random dates within a range.&quot;&quot;&quot;</span>
+        <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">start</span><span class="p">),</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">end</span><span class="p">)</span>
+        <span class="n">start_u</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">value</span><span class="o">//</span><span class="mi">10</span><span class="o">**</span><span class="mi">9</span>
+        <span class="n">end_u</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">value</span><span class="o">//</span><span class="mi">10</span><span class="o">**</span><span class="mi">9</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">start_u</span><span class="p">,</span> <span class="n">end_u</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">unit</span><span class="o">=</span><span class="s1">&#39;s&#39;</span><span class="p">)</span>
+
+    <span class="n">crimes</span><span class="p">[</span><span class="s1">&#39;tag&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">crime_types</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">n_points</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                     <span class="n">weights</span><span class="o">=</span><span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+    <span class="n">crimes</span><span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">random_dates</span><span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">,</span> <span class="n">n_points</span><span class="p">)</span>
+    <span class="n">crimes</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">n_points</span><span class="p">)</span>
+    <span class="n">crimes</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">n_points</span><span class="p">)</span>
+    <span class="n">crimes</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Test data generation complete&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">crimes</span><span class="p">,</span> <span class="n">study_area</span></div>
+
+
+
+<div class="viewcode-block" id="run_prediction_pipeline">
+<a class="viewcode-back" href="../../modules/pipeline.html#predspot.pipeline.run_prediction_pipeline">[docs]</a>
+<span class="k">def</span> <span class="nf">run_prediction_pipeline</span><span class="p">(</span><span class="n">crime_data</span><span class="p">,</span> <span class="n">study_area</span><span class="p">,</span> <span class="n">crime_tags</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">time_range</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> 
+                          <span class="n">tfreq</span><span class="o">=</span><span class="s1">&#39;M&#39;</span><span class="p">,</span> <span class="n">grid_resolution</span><span class="o">=</span><span class="mi">250</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run the complete crime prediction pipeline.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        crime_data (pandas.DataFrame): Crime incident data</span>
+<span class="sd">        study_area (geopandas.GeoDataFrame): Study area boundaries</span>
+<span class="sd">        crime_tags (list, optional): List of crime types to include</span>
+<span class="sd">        time_range (list, optional): Time range as [&#39;HH:MM&#39;, &#39;HH:MM&#39;]</span>
+<span class="sd">        tfreq (str, optional): Time frequency (&#39;M&#39;, &#39;W&#39;, &#39;D&#39;). Defaults to &#39;M&#39;</span>
+<span class="sd">        grid_resolution (float, optional): Spatial grid resolution in km. Defaults to 250</span>
+<span class="sd">        debug (bool, optional): Enable debug printing. Defaults to False</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (predictions, pipeline) - Predicted crime densities and fitted pipeline</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If input data is invalid or missing required columns</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Initializing prediction pipeline&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Validate input data</span>
+    <span class="n">required_columns</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;tag&#39;</span><span class="p">,</span> <span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="s1">&#39;lat&#39;</span><span class="p">,</span> <span class="s1">&#39;lon&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">col</span> <span class="ow">in</span> <span class="n">crime_data</span><span class="o">.</span><span class="n">columns</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">required_columns</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Crime data must contain columns: </span><span class="si">{</span><span class="n">required_columns</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Filter by crime tags if specified</span>
+    <span class="k">if</span> <span class="n">crime_tags</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtering for crime types: </span><span class="si">{</span><span class="n">crime_tags</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">crime_data</span> <span class="o">=</span> <span class="n">crime_data</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">crime_data</span><span class="p">[</span><span class="s1">&#39;tag&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">crime_tags</span><span class="p">)]</span>
+
+    <span class="c1"># Filter by time range if specified</span>
+    <span class="k">if</span> <span class="n">time_range</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtering for time range: </span><span class="si">{</span><span class="n">time_range</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">time_ix</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DatetimeIndex</span><span class="p">(</span><span class="n">crime_data</span><span class="p">[</span><span class="s1">&#39;t&#39;</span><span class="p">])</span>
+        <span class="n">crime_data</span> <span class="o">=</span> <span class="n">crime_data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">time_ix</span><span class="o">.</span><span class="n">indexer_between_time</span><span class="p">(</span><span class="n">time_range</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">time_range</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Creating dataset&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset_preparation</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span><span class="n">crimes</span><span class="o">=</span><span class="n">crime_data</span><span class="p">,</span> <span class="n">study_area</span><span class="o">=</span><span class="n">study_area</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Building prediction pipeline&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">pred_pipeline</span> <span class="o">=</span> <span class="n">ml_modelling</span><span class="o">.</span><span class="n">PredictionPipeline</span><span class="p">(</span>
+        <span class="n">mapping</span><span class="o">=</span><span class="n">crime_mapping</span><span class="o">.</span><span class="n">KDE</span><span class="p">(</span>
+            <span class="n">tfreq</span><span class="o">=</span><span class="n">tfreq</span><span class="p">,</span>
+            <span class="n">bandwidth</span><span class="o">=</span><span class="s1">&#39;auto&#39;</span><span class="p">,</span>
+            <span class="n">grid</span><span class="o">=</span><span class="n">crime_mapping</span><span class="o">.</span><span class="n">create_gridpoints</span><span class="p">(</span><span class="n">study_area</span><span class="p">,</span> <span class="n">grid_resolution</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="n">fextraction</span><span class="o">=</span><span class="n">PandasFeatureUnion</span><span class="p">([</span>
+            <span class="p">(</span><span class="s1">&#39;seasonal&#39;</span><span class="p">,</span> <span class="n">feature_engineering</span><span class="o">.</span><span class="n">Seasonality</span><span class="p">(</span><span class="n">lags</span><span class="o">=</span><span class="mi">2</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s1">&#39;trend&#39;</span><span class="p">,</span> <span class="n">feature_engineering</span><span class="o">.</span><span class="n">Trend</span><span class="p">(</span><span class="n">lags</span><span class="o">=</span><span class="mi">2</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s1">&#39;diff&#39;</span><span class="p">,</span> <span class="n">feature_engineering</span><span class="o">.</span><span class="n">Diff</span><span class="p">(</span><span class="n">lags</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+        <span class="p">]),</span>
+        <span class="n">estimator</span><span class="o">=</span><span class="n">Pipeline</span><span class="p">([</span>
+            <span class="p">(</span><span class="s1">&#39;f_scaling&#39;</span><span class="p">,</span> <span class="n">feature_engineering</span><span class="o">.</span><span class="n">FeatureScaling</span><span class="p">(</span>
+                <span class="n">QuantileTransformer</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">output_distribution</span><span class="o">=</span><span class="s1">&#39;uniform&#39;</span><span class="p">))),</span>
+            <span class="p">(</span><span class="s1">&#39;f_selection&#39;</span><span class="p">,</span> <span class="n">ml_modelling</span><span class="o">.</span><span class="n">FeatureSelection</span><span class="p">(</span>
+                <span class="n">RFE</span><span class="p">(</span><span class="n">RandomForestRegressor</span><span class="p">()))),</span>
+            <span class="p">(</span><span class="s1">&#39;model&#39;</span><span class="p">,</span> <span class="n">ml_modelling</span><span class="o">.</span><span class="n">Model</span><span class="p">(</span><span class="n">RandomForestRegressor</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">50</span><span class="p">)))</span>
+        <span class="p">])</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Fitting pipeline&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">pred_pipeline</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Making predictions&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">predictions</span> <span class="o">=</span> <span class="n">pred_pipeline</span><span class="o">.</span><span class="n">predict</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Pipeline execution complete&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">predictions</span><span class="p">,</span> <span class="n">pred_pipeline</span></div>
+
+
+
+<div class="viewcode-block" id="evaluate_pipeline">
+<a class="viewcode-back" href="../../modules/pipeline.html#predspot.pipeline.evaluate_pipeline">[docs]</a>
+<span class="k">def</span> <span class="nf">evaluate_pipeline</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">scoring</span><span class="o">=</span><span class="s1">&#39;r2&#39;</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Evaluate the prediction pipeline using cross-validation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        pipeline (PredictionPipeline): Fitted prediction pipeline</span>
+<span class="sd">        scoring (str, optional): Scoring metric (&#39;r2&#39; or &#39;mse&#39;). Defaults to &#39;r2&#39;</span>
+<span class="sd">        cv (int, optional): Number of cross-validation folds. Defaults to 5</span>
+<span class="sd">        debug (bool, optional): Enable debug printing. Defaults to False</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list: Cross-validation scores</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; scores = evaluate_pipeline(fitted_pipeline, scoring=&#39;r2&#39;, cv=5)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Evaluating pipeline with </span><span class="si">{</span><span class="n">cv</span><span class="si">}</span><span class="s2">-fold CV using </span><span class="si">{</span><span class="n">scoring</span><span class="si">}</span><span class="s2"> metric&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">scoring</span><span class="o">=</span><span class="n">scoring</span><span class="p">,</span> <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Evaluation complete. Mean score: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">scores</span> </div>
+
+</pre></div>
+
+          </div>
+              <div class="related bottom">
+                &nbsp;
+  <nav id="rellinks">
+    <ul>
+    </ul>
+  </nav>
+              </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &#169;2024, Adelson Araujo.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
