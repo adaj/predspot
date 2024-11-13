@@ -11,6 +11,22 @@ Key features:
 - Crime hotspot detection using Kernel Density Estimation
 - Visualization tools for crime patterns
 
+## ⚠️ Important Notice
+This project was developed as part of a master's thesis and is currently in an archived state. While the core functionality exists, you may encounter compatibility issues with newer Python package versions. The code can work with some effort, but please note:
+
+- This is not production-ready software
+- Some dependencies are outdated and may require specific versions
+- You might need to modify some code to work with newer package versions
+- The project was created for research purposes
+
+However, we believe the methodologies and approaches used here are still valuable! If you're interested in crime hotspot prediction, feel free to:
+- Use this as a reference implementation
+- Adapt the code to modern dependencies
+- Build upon these concepts for your own projects
+- Contribute to modernizing the codebase
+
+We welcome anyone interested in reviving or learning from this project! 🚀
+
 ## How to use? 🚀
 
 > Documentation under construction.
