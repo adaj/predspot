@@ -2,7 +2,8 @@
 Utilities Module
 ================
 
-Helpers used across Predspot: a :class:`PandasFeatureUnion` that keeps
+Helpers used across Predspot: a [`PandasFeatureUnion`][predspot.utilities.PandasFeatureUnion] that
+keeps
 DataFrames (and their index) when combining feature transformers, and a
 GeoJSON contour export for density maps.
 """
@@ -22,7 +23,7 @@ class PandasFeatureUnion(TransformerMixin, BaseEstimator):
     """
     Concatenate the DataFrame outputs of several transformers column-wise.
 
-    Unlike :class:`sklearn.pipeline.FeatureUnion`, the transformers' outputs
+    Unlike ``sklearn.pipeline.FeatureUnion``, the transformers' outputs
     are aligned on their index and returned as a DataFrame. Rows with missing
     values after alignment (e.g. warm-up rows of lag features) are dropped.
 
@@ -79,7 +80,7 @@ def contour_geojson(y, bbox, resolution, cmin, cmax):
     Args:
         y (pandas.Series): Values indexed by the positional index of the
             full point grid returned by
-            :func:`predspot.crime_mapping.create_gridpoints` (before
+            [`create_gridpoints`][predspot.crime_mapping.create_gridpoints] (before
             clipping), i.e. the ``places`` index.
         bbox (GeoDataFrame): Study area used to build the grid.
         resolution (float): Grid resolution in kilometers (same as the grid).

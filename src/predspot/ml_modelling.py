@@ -30,7 +30,7 @@ class FeatureSelection(TransformerMixin, BaseEstimator):
     Wrap a scikit-learn feature selector so that it returns DataFrames.
 
     Args:
-        estimator: A selector exposing ``support_`` after fit (e.g. ``RFE``).
+        estimator (object): A selector exposing ``support_`` after fit (e.g. ``RFE``).
     """
 
     def __init__(self, estimator):
@@ -60,7 +60,7 @@ class Model(RegressorMixin, BaseEstimator):
     Wrap a scikit-learn regressor so that predictions come back as DataFrames.
 
     Args:
-        estimator: Any scikit-learn regressor.
+        estimator (sklearn.base.RegressorMixin): Any scikit-learn regressor.
     """
 
     def __init__(self, estimator):
@@ -87,18 +87,19 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
     End-to-end crime hotspot prediction.
 
     The pipeline chains three stages: a spatio-temporal ``mapping`` (e.g.
-    :class:`predspot.crime_mapping.KDE`) that turns events into a series per
+    [`KDE`][predspot.crime_mapping.KDE]) that turns events into a series per
     place and period; a feature extraction step (e.g.
-    :class:`predspot.utilities.PandasFeatureUnion` of lag features) and a
+    [`PandasFeatureUnion`][predspot.utilities.PandasFeatureUnion] of lag features) and a
     scikit-learn ``estimator`` (or ``Pipeline``) that learns to predict the
     next period's value from the features.
 
     Args:
-        mapping: A :class:`predspot.crime_mapping.SpatioTemporalMapping`.
-        fextraction: A transformer taking the series and returning features.
-        estimator: A scikit-learn regressor or ``Pipeline`` whose last step
+        mapping (SpatioTemporalMapping): A
+            [`SpatioTemporalMapping`][predspot.crime_mapping.SpatioTemporalMapping].
+        fextraction (object): A transformer taking the series and returning features.
+        estimator (object): A scikit-learn regressor or ``Pipeline`` whose last step
             returns a DataFrame with a ``crime_density`` column (see
-            :class:`Model`).
+            [`Model`][predspot.ml_modelling.Model]).
         random_state (int, optional): Seed used to shuffle the training rows.
     """
 
@@ -148,8 +149,9 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         Importance of each selected feature.
 
         Works when ``estimator`` is a ``Pipeline`` whose last step exposes
-        ``feature_importances_`` (e.g. :class:`Model` around a random
-        forest); an optional :class:`FeatureSelection` step before it is
+        ``feature_importances_`` (e.g. [`Model`][predspot.ml_modelling.Model] around a random
+        forest); an optional [`FeatureSelection`][predspot.ml_modelling.FeatureSelection] step
+        before it is
         taken into account.
 
         Returns:
@@ -176,7 +178,7 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
 
         Args:
             dataset (predspot.Dataset): Crime events and study area.
-            y: Ignored; present for scikit-learn compatibility.
+            y (None): Ignored; present for scikit-learn compatibility.
 
         Returns:
             PredictionPipeline: ``self``.
@@ -221,7 +223,7 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         Score the estimator with time series cross-validation.
 
         Periods are split in ``cv`` consecutive folds
-        (:class:`sklearn.model_selection.TimeSeriesSplit`); the estimator is
+        (``sklearn.model_selection.TimeSeriesSplit``); the estimator is
         refitted on the original data afterwards.
 
         Args:

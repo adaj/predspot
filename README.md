@@ -26,7 +26,8 @@ implementation and adapt it to your own data.
 
 ## How to use? 🚀
 
-> Documentation under construction.
+Full documentation, with a quickstart, a user guide and the API reference, lives at
+**https://adaj.github.io/predspot/**.
 
 Basic usage example:
 

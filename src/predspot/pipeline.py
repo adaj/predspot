@@ -38,7 +38,7 @@ def generate_testdata(n_points, start_time, end_time, bounds=DEFAULT_BOUNDS, see
     """
     Generate synthetic crime events inside a rectangular study area.
 
-    A thin wrapper around :func:`predspot.synthetic.generate_crimes` with
+    A thin wrapper around [`generate_crimes`][predspot.synthetic.generate_crimes] with
     three hotspots and the default temporal patterns.
 
     Args:
@@ -74,7 +74,7 @@ def build_default_pipeline(
         tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
         grid_resolution (float): Grid spacing in kilometers.
         lags (int): Number of lags (and STL period) of the features.
-        bandwidth (str or float): KDE bandwidth, see :class:`predspot.crime_mapping.KDE`.
+        bandwidth (str or float): KDE bandwidth, see [`KDE`][predspot.crime_mapping.KDE].
         random_state (int, optional): Seed for the estimator and shuffling.
 
     Returns:
@@ -142,7 +142,7 @@ def run_prediction_pipeline(
 
     Returns:
         tuple: ``(predictions, pipeline)`` — the forecast for the next period
-        and the fitted :class:`predspot.ml_modelling.PredictionPipeline`.
+        and the fitted [`PredictionPipeline`][predspot.ml_modelling.PredictionPipeline].
     """
     missing = [c for c in ("tag", "t", "lat", "lon") if c not in crime_data.columns]
     if missing:
@@ -168,7 +168,7 @@ def run_prediction_pipeline(
 
 def evaluate_pipeline(pipeline, scoring="r2", cv=5):
     """
-    Cross-validate a fitted pipeline; see :meth:`PredictionPipeline.evaluate`.
+    Cross-validate a fitted pipeline; see ``PredictionPipeline.evaluate``.
 
     Args:
         pipeline (PredictionPipeline): A fitted pipeline.

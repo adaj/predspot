@@ -3,7 +3,8 @@ Dataset Preparation Module
 ==========================
 
 Prepares crime event data together with the study area it belongs to.
-:class:`Dataset` validates the input, converts the events to a GeoDataFrame
+[`Dataset`][predspot.dataset_preparation.Dataset] validates the input, converts the events to a
+GeoDataFrame
 of points in WGS84 and offers simple plotting and splitting helpers.
 """
 
@@ -27,7 +28,7 @@ class Dataset:
     Args:
         crimes (pandas.DataFrame): Crime events with at least the columns
             ``tag`` (crime type), ``t`` (timestamp, anything
-            :func:`pandas.to_datetime` understands), ``lon`` and ``lat``
+            ``pandas.to_datetime`` understands), ``lon`` and ``lat``
             (WGS84 degrees). The input is **not** modified.
         study_area (geopandas.GeoDataFrame): Boundary of the study area. It
             must have a CRS set.
@@ -100,7 +101,7 @@ class Dataset:
         Args:
             ax (matplotlib.axes.Axes, optional): Axes to draw on.
             crime_samples (int): Number of events to draw (random sample).
-            **kwargs: ``study_area=dict(...)`` and ``crimes=dict(...)`` are
+            **kwargs (dict): ``study_area=dict(...)`` and ``crimes=dict(...)`` are
                 forwarded to the respective ``GeoDataFrame.plot`` calls.
 
         Returns:
