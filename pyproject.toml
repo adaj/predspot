@@ -44,6 +44,12 @@ dependencies = [
 
 [project.optional-dependencies]
 contour = ["geojsoncontour>=0.4"]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.5,<10",
+  "mkdocstrings[python]>=0.26",
+  "mkdocs-autorefs>=1.2",
+]
 dev = [
   "pytest>=8",
   "pytest-cov>=5",

@@ -24,6 +24,8 @@ versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
   `pipeline.generate_testdata(..., seed=...)`.
 - `PredictionPipeline.features`, `.next_time` and `random_state`.
 - Test suite (pytest) and continuous integration for Python 3.10-3.13.
+- Documentation rebuilt with MkDocs (Material + mkdocstrings), deployed
+  automatically to GitHub Pages; replaces the Sphinx site.
 - `pyproject.toml` packaging (src layout) and automated PyPI publishing.
 
 ### Changed
@@ -39,6 +41,7 @@ versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
 - `geojsoncontour` is an optional dependency (`pip install predspot[contour]`).
 
 ### Removed
+- Sphinx documentation sources and the committed HTML build.
 - `QuadratCount2`, `KGrid` and the hard dependencies on `descartes`,
   `contextily` and `rtree`.
 

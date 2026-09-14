@@ -3,14 +3,15 @@ Feature Engineering Module
 ==========================
 
 Turns the spatio-temporal series produced by a mapping (see
-:mod:`predspot.crime_mapping`) into lagged features, one row per
+[`crime_mapping`][predspot.crime_mapping]) into lagged features, one row per
 ``(t, places)``. Each feature class applies a time series transformation to
 the history of every place and then builds ``lags`` lagged columns from it:
 
-* :class:`AR` — the raw series (autoregressive features);
-* :class:`Diff` — first differences;
-* :class:`Seasonality` — the seasonal component of an STL decomposition;
-* :class:`Trend` — the trend component of an STL decomposition.
+* [`AR`][predspot.feature_engineering.AR] — the raw series (autoregressive features);
+* [`Diff`][predspot.feature_engineering.Diff] — first differences;
+* [`Seasonality`][predspot.feature_engineering.Seasonality] — the seasonal component of an STL
+decomposition;
+* [`Trend`][predspot.feature_engineering.Trend] — the trend component of an STL decomposition.
 
 The output always contains one extra row for the period right after the last
 observed one, so that the fitted model can forecast the next period.
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 def infer_offset(time_index):
     """
-    Infer the :class:`pandas.DateOffset` between consecutive periods.
+    Infer the ``pandas.DateOffset`` between consecutive periods.
 
     Args:
         time_index (pandas.DatetimeIndex): Unique, sorted period labels.
@@ -201,7 +202,7 @@ class FeatureScaling(TransformerMixin, BaseEstimator):
     Wrap a scikit-learn scaler so that it returns DataFrames.
 
     Args:
-        estimator: Any scikit-learn transformer (e.g. ``QuantileTransformer``).
+        estimator (TransformerMixin): Any scikit-learn transformer (e.g. ``QuantileTransformer``).
     """
 
     def __init__(self, estimator):

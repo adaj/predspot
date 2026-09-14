@@ -6,17 +6,21 @@ Spatial and temporal crime mapping. This module turns a set of georeferenced,
 timestamped crime events into a *spatio-temporal series*: a value per grid cell
 per time period. Two families of mapping are available:
 
-* :class:`KDE` — kernel density estimation evaluated on a grid of **points**
-  (see :func:`create_gridpoints`). This is the default approach of Predspot.
-* :class:`QuadratCount` — plain event counts per **cell** of a polygonal grid
-  (see :func:`create_gridhexagonal` and :func:`create_gridsquares`).
+* [`KDE`][predspot.crime_mapping.KDE] — kernel density estimation evaluated on a grid of **points**
+  (see [`create_gridpoints`][predspot.crime_mapping.create_gridpoints]). This is the default
+  approach of Predspot.
+* [`QuadratCount`][predspot.crime_mapping.QuadratCount] — plain event counts per **cell** of a
+polygonal grid
+  (see [`create_gridhexagonal`][predspot.crime_mapping.create_gridhexagonal] and
+  [`create_gridsquares`][predspot.crime_mapping.create_gridsquares]).
 
-Both produce the same output format, a :class:`pandas.Series` named
+Both produce the same output format, a ``pandas.Series`` named
 ``crime_density`` indexed by ``(t, places)``, so they are interchangeable
-inside :class:`predspot.ml_modelling.PredictionPipeline`.
+inside [`PredictionPipeline`][predspot.ml_modelling.PredictionPipeline].
 
 The study area itself can be fetched from OpenStreetMap with
-:func:`load_study_area` (requires the optional ``osmnx`` dependency).
+[`load_study_area`][predspot.crime_mapping.load_study_area] (requires the optional ``osmnx``
+dependency).
 """
 
 __author__ = "Adelson Araujo"
@@ -77,7 +81,7 @@ def normalize_tfreq(tfreq):
 
 
 def tfreq_offset(tfreq):
-    """Return the :class:`pandas.DateOffset` that advances one period of ``tfreq``."""
+    """Return the ``pandas.DateOffset`` that advances one period of ``tfreq``."""
     alias = normalize_tfreq(tfreq)
     if alias == "ME":
         return pd.offsets.MonthEnd(1)
@@ -93,14 +97,14 @@ def load_study_area(place, crs=WGS84, which_result=None):
     Uses `osmnx <https://osmnx.readthedocs.io>`_ (optional dependency:
     ``pip install predspot[osm]``) to geocode ``place`` with Nominatim and
     return its administrative boundary, ready to be used as the
-    ``study_area`` of :class:`predspot.Dataset` or as the ``bbox`` of the
+    ``study_area`` of [`Dataset`][predspot.Dataset] or as the ``bbox`` of the
     ``create_grid*`` functions.
 
     Args:
         place (str or list): Name of the place as Nominatim understands it,
             e.g. ``"Natal, Rio Grande do Norte, Brazil"``. A list of names
             returns one row per place.
-        crs: CRS of the returned GeoDataFrame (default WGS84).
+        crs (str or pyproj.CRS): CRS of the returned GeoDataFrame (default WGS84).
         which_result (int, optional): Forwarded to
             ``osmnx.geocode_to_gdf`` to pick a specific Nominatim match when
             the first one is not the boundary you want.
@@ -170,7 +174,7 @@ def create_gridpoints(bbox, resolution, return_coords=False):
     """
     Create a regular grid of points covering a study area.
 
-    This is the grid used by :class:`KDE`: the density is evaluated at each
+    This is the grid used by [`KDE`][predspot.crime_mapping.KDE]: the density is evaluated at each
     point. The grid is built in WGS84 with the requested spacing and then
     re-projected to the CRS of ``bbox``.
 
@@ -319,8 +323,8 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator):
     """
     Abstract base class for spatio-temporal crime mapping.
 
-    Subclasses implement :meth:`fit_grid`, which maps the events of a single
-    time period onto the grid. :meth:`transform` takes care of splitting the
+    Subclasses implement ``fit_grid``, which maps the events of a single
+    time period onto the grid. ``transform`` takes care of splitting the
     events into periods, filling periods with no events and assembling the
     result into a series indexed by ``(t, places)``.
 
@@ -426,8 +430,12 @@ class KDE(SpatioTemporalMapping):
 
     Args:
         tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
-        grid (GeoDataFrame): Point grid, see :func:`create_gridpoints`.
-        start_time, end_time: See :class:`SpatioTemporalMapping`.
+        grid (GeoDataFrame): Point grid, see
+            [`create_gridpoints`][predspot.crime_mapping.create_gridpoints].
+        start_time (str or datetime, optional): See
+            [`SpatioTemporalMapping`][predspot.crime_mapping.SpatioTemporalMapping].
+        end_time (str or datetime, optional): See
+            [`SpatioTemporalMapping`][predspot.crime_mapping.SpatioTemporalMapping].
         bandwidth (str or float): ``'silverman'`` (default) or ``'scott'`` to
             estimate the bandwidth from the first period with enough events
             and keep it fixed afterwards (so densities are comparable across
@@ -490,14 +498,18 @@ class QuadratCount(SpatioTemporalMapping):
     """
     Count of crime events per grid cell (quadrat count).
 
-    An alternative to :class:`KDE` that works on polygonal grids (hexagons or
-    squares, see :func:`create_gridhexagonal` and :func:`create_gridsquares`):
+    An alternative to [`KDE`][predspot.crime_mapping.KDE] that works on polygonal grids (hexagons or
+    squares, see [`create_gridhexagonal`][predspot.crime_mapping.create_gridhexagonal] and
+    [`create_gridsquares`][predspot.crime_mapping.create_gridsquares]):
     the value of a cell in a period is the number of events that fall in it.
 
     Args:
         tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
         grid (GeoDataFrame): Polygonal grid.
-        start_time, end_time: See :class:`SpatioTemporalMapping`.
+        start_time (str or datetime, optional): See
+            [`SpatioTemporalMapping`][predspot.crime_mapping.SpatioTemporalMapping].
+        end_time (str or datetime, optional): See
+            [`SpatioTemporalMapping`][predspot.crime_mapping.SpatioTemporalMapping].
     """
 
     def __init__(self, tfreq, grid, start_time=None, end_time=None):

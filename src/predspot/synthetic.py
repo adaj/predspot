@@ -140,7 +140,8 @@ def temporal_intensity(
 
     Args:
         timestamps (DatetimeIndex): Times to evaluate.
-        start, end (Timestamp): Bounds of the simulation, used for the trend.
+        start (Timestamp): Start of the simulation, used for the trend.
+        end (Timestamp): End of the simulation, used for the trend.
         trend (float): Relative change of the intensity from ``start`` to
             ``end`` (``0.5`` means +50% at the end, ``-0.3`` means -30%).
         annual_amplitude (float): Amplitude of the annual cosine (0-1).
@@ -179,10 +180,12 @@ def sample_timestamps(n, start, end, rng, max_iterations=1000, **intensity_kwarg
 
     Args:
         n (int): Number of timestamps.
-        start, end (Timestamp): Simulation bounds.
+        start (Timestamp): Start of the simulation.
+        end (Timestamp): End of the simulation.
         rng (numpy.random.Generator): Random generator.
         max_iterations (int): Safety cap on thinning rounds.
-        **intensity_kwargs: Forwarded to :func:`temporal_intensity`.
+        **intensity_kwargs (dict): Forwarded to
+            [`temporal_intensity`][predspot.synthetic.temporal_intensity].
 
     Returns:
         pandas.DatetimeIndex: ``n`` timestamps, unsorted.
@@ -239,7 +242,7 @@ def generate_crimes(
 
     Args:
         study_area (GeoDataFrame): Boundary of the study area (any CRS). See
-            :func:`predspot.crime_mapping.load_study_area` to fetch one from
+            [`load_study_area`][predspot.crime_mapping.load_study_area] to fetch one from
             OpenStreetMap.
         n_events (int): Number of events to generate.
         start (str or Timestamp): First possible timestamp.
@@ -251,7 +254,7 @@ def generate_crimes(
             clouds in km (one value or one per hotspot).
         tags (dict or sequence): Crime types. A dict maps type to relative
             weight; a sequence gives equal weights. Defaults to
-            :data:`DEFAULT_TAGS`.
+            ``DEFAULT_TAGS``.
         trend (float): Relative change of the event rate from ``start`` to
             ``end`` (``0.5`` = +50%).
         annual_amplitude (float): Amplitude of the annual cycle (0 disables).
@@ -265,7 +268,7 @@ def generate_crimes(
 
     Returns:
         pandas.DataFrame: Events with ``tag``, ``t``, ``lon``, ``lat`` columns
-        sorted by time, ready for :class:`predspot.Dataset`. If
+        sorted by time, ready for [`Dataset`][predspot.Dataset]. If
         ``return_hotspots`` is True, a tuple ``(crimes, hotspots)`` where
         ``hotspots`` is a GeoDataFrame with the centre, ``sd_km`` and
         ``share`` of each hotspot.
