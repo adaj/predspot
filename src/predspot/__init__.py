@@ -14,6 +14,7 @@ from predspot import (
     dataset_preparation,
     feature_engineering,
     ml_modelling,
+    synthetic,
     utilities,
 )
 from predspot.crime_mapping import (
@@ -22,9 +23,11 @@ from predspot.crime_mapping import (
     create_gridhexagonal,
     create_gridpoints,
     create_gridsquares,
+    load_study_area,
 )
 from predspot.dataset_preparation import Dataset
 from predspot.ml_modelling import PredictionPipeline
+from predspot.synthetic import generate_crimes
 from predspot.utilities import PandasFeatureUnion
 
 __version__ = "0.2.0"
@@ -38,6 +41,9 @@ __all__ = [
     "create_gridpoints",
     "create_gridhexagonal",
     "create_gridsquares",
+    "load_study_area",
+    "generate_crimes",
+    "synthetic",
     "crime_mapping",
     "dataset_preparation",
     "feature_engineering",

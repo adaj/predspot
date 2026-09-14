@@ -25,6 +25,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import QuantileTransformer
 
 from predspot import crime_mapping, dataset_preparation, feature_engineering, ml_modelling
+from predspot.synthetic import generate_crimes
 from predspot.utilities import PandasFeatureUnion
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,10 @@ DEFAULT_BOUNDS = (-35.30, -5.90, -35.20, -5.80)
 
 def generate_testdata(n_points, start_time, end_time, bounds=DEFAULT_BOUNDS, seed=None):
     """
-    Generate uniformly random crime events inside a rectangular study area.
+    Generate synthetic crime events inside a rectangular study area.
+
+    A thin wrapper around :func:`predspot.synthetic.generate_crimes` with
+    three hotspots and the default temporal patterns.
 
     Args:
         n_points (int): Number of events.
@@ -48,27 +52,13 @@ def generate_testdata(n_points, start_time, end_time, bounds=DEFAULT_BOUNDS, see
         tuple: ``(crimes, study_area)`` — a DataFrame with ``tag``, ``t``,
         ``lon``, ``lat`` and a one-row GeoDataFrame with the study area.
     """
-    rng = np.random.default_rng(seed)
     west, south, east, north = bounds
     study_area = gpd.GeoDataFrame(
         {"name": ["study_area"]}, geometry=[box(west, south, east, north)], crs="EPSG:4326"
     )
-    start, end = pd.Timestamp(start_time), pd.Timestamp(end_time)
-    seconds = rng.integers(0, int((end - start).total_seconds()), n_points)
-    tags = rng.choice(
-        ["burglary", "assault", "drugs", "homicide"],
-        size=n_points,
-        p=np.array([1000, 100, 10, 1]) / 1111,
+    crimes = generate_crimes(
+        study_area, n_events=n_points, start=start_time, end=end_time, seed=seed
     )
-    crimes = pd.DataFrame(
-        {
-            "tag": tags,
-            "t": start + pd.to_timedelta(seconds, unit="s"),
-            "lon": rng.uniform(west, east, n_points),
-            "lat": rng.uniform(south, north, n_points),
-        }
-    )
-    logger.debug("Generated %d synthetic events", n_points)
     return crimes, study_area
 
 
