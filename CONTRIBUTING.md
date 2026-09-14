@@ -36,11 +36,12 @@ mkdocs build --strict   # what CI runs
 
 Pushing to `master` deploys the site to GitHub Pages automatically. The home
 page is generated from `README.md` (see `docs/hooks/readme.py`), and the
-example notebook is rendered from `examples/natal.ipynb`; regenerate and
-re-execute it with:
+example notebook is rendered from `examples/natal.ipynb` with its stored
+outputs. After editing the notebook, re-execute it so the outputs stay in sync
+(it needs network access for `get_city_shape`):
 
 ```bash
-python examples/build_natal_notebook.py
+pip install -e ".[examples]"
 jupyter nbconvert --to notebook --execute --inplace examples/natal.ipynb
 ```
 

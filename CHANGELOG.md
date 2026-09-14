@@ -16,7 +16,7 @@ versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
   `osmnx.geocode_to_gdf` returning the raw city shape; `osmnx` is now a core
   dependency (the `osm` extra is kept, empty, for compatibility).
 - `examples/natal.ipynb`: an executed end-to-end walkthrough on Natal with
-  synthetic data, also rendered in the documentation.
+  synthetic data (executed, with outputs), also rendered in the documentation.
 - `PredictionPipeline.evaluate` accepts a list of scorings and returns a
   DataFrame (one CV pass for all metrics).
 - README section explaining the framework (thesis, Chapter 3, Figures 7-12);
