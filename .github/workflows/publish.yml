@@ -1,0 +1,47 @@
+name: Publish to PyPI
+
+# Publishes when a version tag (v1.2.3) is pushed. Uses PyPI "trusted
+# publishing" (OpenID Connect), so no API token is stored in the repository:
+# register this workflow once at https://pypi.org/manage/account/publishing/
+# (owner: adaj, repository: predspot, workflow: publish.yml, environment: pypi).
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check that the tag matches the package version
+        run: |
+          python -m pip install -e .
+          PKG_VERSION="v$(python -c 'import predspot; print(predspot.__version__)')"
+          echo "tag=${GITHUB_REF_NAME} package=${PKG_VERSION}"
+          test "${GITHUB_REF_NAME}" = "${PKG_VERSION}"
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/predspot
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
