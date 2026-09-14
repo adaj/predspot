@@ -3,3 +3,8 @@
 *.geojson
 *.csv
 *.DS_Store
+.venv/
+.pytest_cache/
+build/
+dist/
+*.egg-info/

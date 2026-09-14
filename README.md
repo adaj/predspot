@@ -11,21 +11,13 @@ Key features:
 - Crime hotspot detection using Kernel Density Estimation
 - Visualization tools for crime patterns
 
-## ⚠️ Important Notice
-This project was developed as part of a master's thesis and is currently in an archived state. While the core functionality exists, you may encounter compatibility issues with newer Python package versions. The code can work with some effort, but please note:
+## Status 🚧
 
-- This is not production-ready software
-- Some dependencies are outdated and may require specific versions
-- You might need to modify some code to work with newer package versions
-- The project was created for research purposes
-
-However, we believe the methodologies and approaches used here are still valuable! If you're interested in crime hotspot prediction, feel free to:
-- Use this as a reference implementation
-- Adapt the code to modern dependencies
-- Build upon these concepts for your own projects
-- Contribute to modernizing the codebase
-
-We welcome anyone interested in reviving or learning from this project! 🚀
+Predspot started as part of a master's thesis (2018-2019) and is being revived
+and modernised. The code base now targets Python 3.10+ with current versions of
+pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels, and is
+covered by a test suite. It remains research software: use it as a reference
+implementation and adapt it to your own data.
 
 ## How to use? 🚀
 
@@ -38,23 +30,46 @@ from predspot import Dataset, PredictionPipeline
 from predspot.crime_mapping import KDE, create_gridpoints
 from predspot.feature_engineering import Seasonality, Trend, Diff
 
-# Load and prepare data
+from predspot.utilities import PandasFeatureUnion
+from sklearn.ensemble import RandomForestRegressor
+
+# Load and prepare data: crimes_df needs `tag`, `t`, `lon`, `lat` columns and
+# study_area_gdf is a GeoDataFrame with the boundary of the study area
 dataset = Dataset(crimes_df, study_area_gdf)
 
-# Create prediction pipeline
+# Create prediction pipeline (monthly KDE on a 1 km point grid)
 pipeline = PredictionPipeline(
-    mapping=KDE(tfreq='M', grid=create_gridpoints(study_area, resolution=250)),
+    mapping=KDE(tfreq='M', grid=create_gridpoints(study_area_gdf, resolution=1)),
     fextraction=PandasFeatureUnion([
         ('seasonal', Seasonality(lags=12)),
         ('trend', Trend(lags=12)),
         ('diff', Diff(lags=12))
     ]),
-    estimator=your_favorite_sklearn_model
+    estimator=RandomForestRegressor()
 )
 
-# Fit and predict
+# Fit and predict the next month for every grid point
 pipeline.fit(dataset)
 predictions = pipeline.predict()
+```
+
+Prefer counting events per cell instead of a density surface? Use the
+hexagonal grid with `QuadratCount`:
+
+```python
+from predspot.crime_mapping import QuadratCount, create_gridhexagonal
+
+mapping = QuadratCount(tfreq='W', grid=create_gridhexagonal(study_area_gdf, resolution=1))
+```
+
+Or run the default pipeline in one call:
+
+```python
+from predspot.pipeline import generate_testdata, run_prediction_pipeline
+
+crimes, study_area = generate_testdata(2000, '2019-01-01', '2020-12-31', seed=0)
+predictions, pipeline = run_prediction_pipeline(crimes, study_area, grid_resolution=1)
+print(pipeline.evaluate('r2', cv=3))
 ```
 
 
@@ -64,7 +79,7 @@ Predspot has four main modules:
 
 `dataset_preparation`: Module for preparing and managing crime datasets and study areas.
 
-`crime_mapping`: Module for spatial and temporal crime mapping, including KDE-based hotspot detection.
+`crime_mapping`: Module for spatial and temporal crime mapping: point, hexagonal and square grids, KDE-based density surfaces and per-cell counts (`QuadratCount`).
 
 `feature_engineering`: Module for time series feature engineering, including seasonality, trend, and difference features.
 
@@ -72,35 +87,23 @@ Predspot has four main modules:
 
 ### Installation steps 🛠️
 
-Create conda env and install requirements:
+Predspot requires Python 3.10 or newer.
 
 ```bash
-conda create -n predspot python=3.8
-conda activate predspot
-conda install -y rtree geopandas  # if doesnt work, do: `conda clean --all`
-pip install pandas statsmodels==0.10.2 geojsoncontour stldecompose scikit-learn matplotlib descartes
+git clone https://github.com/adaj/predspot.git
+cd predspot
 pip install .
 ```
 
-Required dependencies:
-- pandas
-- geopandas
-- numpy
-- scikit-learn
-- scipy
-- stldecompose
-- matplotlib
+Core dependencies (installed automatically): pandas, geopandas, shapely,
+numpy, scipy, scikit-learn, statsmodels and matplotlib. The optional
+`geojsoncontour` package enables `predspot.utilities.contour_geojson`.
 
-### Tests 🧪 (TO DO)
-
-TO DO: Unit tests can be executed as follows:
+### Tests 🧪
 
 ```bash
-bash
-python tests/test_dataset_preparation.py
-python tests/test_crime_mapping.py
-python tests/test_feature_engineering.py
-python tests/test_ml_modelling.py
+pip install pytest
+pytest
 ```
 
 ### Input Data Format 📊

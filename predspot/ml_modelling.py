@@ -1,286 +1,254 @@
 """
 Machine Learning Modelling Module
+=================================
 
-This module provides classes for machine learning model pipelines, feature selection,
-and prediction functionality for crime density forecasting.
+The prediction pipeline of Predspot and thin wrappers that make scikit-learn
+feature selectors and regressors keep pandas indexes, so predictions stay
+attached to their ``(t, places)`` labels.
 """
 
 __author__ = 'Adelson Araujo'
 
+import logging
+
 import pandas as pd
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.base import BaseEstimator, RegressorMixin, TransformerMixin
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import TimeSeriesSplit
 
+from predspot.crime_mapping import tfreq_offset
+
+logger = logging.getLogger(__name__)
+
 idx = pd.IndexSlice
+
+SCORERS = {'r2': r2_score, 'mse': mean_squared_error}
 
 
 class FeatureSelection(TransformerMixin, BaseEstimator):
     """
-    Feature selection transformer.
+    Wrap a scikit-learn feature selector so that it returns DataFrames.
 
     Args:
-        estimator: Scikit-learn compatible feature selector
-        debug (bool, optional): Enable debug printing. Defaults to False
+        estimator: A selector exposing ``support_`` after fit (e.g. ``RFE``).
     """
 
-    def __init__(self, estimator, debug=False):
-        self._estimator = estimator
-        self.debug = debug
-        
-        if self.debug:
-            print("Initializing FeatureSelection", flush=True)
+    def __init__(self, estimator):
+        self.estimator = estimator
 
     def fit(self, x, y=None):
-        """
-        Fit the feature selector.
-
-        Args:
-            x (pandas.DataFrame): Input features
-            y (pandas.Series, optional): Target variable
-
-        Returns:
-            self: The fitted instance
-        """
-        if self.debug:
-            print(f"Fitting feature selector with {x.shape[1]} features", flush=True)
-            
-        self._estimator.fit(x, y)
+        self.estimator.fit(x, y)
+        self.is_fitted_ = True
         return self
 
+    def __sklearn_is_fitted__(self):
+        return getattr(self, 'is_fitted_', False)
+
+    @property
+    def support_(self):
+        """numpy.ndarray: Boolean mask of the selected columns."""
+        return self.estimator.support_
+
     def transform(self, x):
-        """
-        Transform features using the feature selector.
-
-        Args:
-            x (pandas.DataFrame): Input features
-
-        Returns:
-            pandas.DataFrame: Selected features
-        """
-        if self.debug:
-            print(f"Transforming features, selecting {sum(self._estimator.support_)} features", flush=True)
-            
-        return pd.DataFrame(
-            self._estimator.transform(x), 
-            index=x.index,
-            columns=x.columns[self._estimator.support_]
-        )
+        return pd.DataFrame(self.estimator.transform(x), index=x.index,
+                            columns=x.columns[self.estimator.support_])
 
 
 class Model(RegressorMixin, BaseEstimator):
     """
-    Model wrapper for crime density prediction.
+    Wrap a scikit-learn regressor so that predictions come back as DataFrames.
 
     Args:
-        estimator: Scikit-learn compatible regression estimator
-        debug (bool, optional): Enable debug printing. Defaults to False
+        estimator: Any scikit-learn regressor.
     """
 
-    def __init__(self, estimator, debug=False):
-        self._estimator = estimator
-        self.debug = debug
-        
-        if self.debug:
-            print("Initializing Model wrapper", flush=True)
+    def __init__(self, estimator):
+        self.estimator = estimator
 
     def fit(self, x, y=None):
-        """
-        Fit the regression model.
-
-        Args:
-            x (pandas.DataFrame): Input features
-            y (pandas.Series, optional): Target variable
-
-        Returns:
-            self: The fitted instance
-        """
-        if self.debug:
-            print(f"Fitting model with {x.shape[1]} features", flush=True)
-            
-        self._estimator.fit(x, y)
+        self.estimator.fit(x, y)
+        self.is_fitted_ = True
         return self
 
+    def __sklearn_is_fitted__(self):
+        return getattr(self, 'is_fitted_', False)
+
+    @property
+    def feature_importances_(self):
+        return self.estimator.feature_importances_
+
     def predict(self, x):
-        """
-        Make predictions using the fitted model.
-
-        Args:
-            x (pandas.DataFrame): Input features
-
-        Returns:
-            pandas.DataFrame: Predictions with 'crime_density' column
-        """
-        if self.debug:
-            print(f"Making predictions for {len(x)} instances", flush=True)
-            
-        return pd.DataFrame(
-            self._estimator.predict(x), 
-            index=x.index,
-            columns=['crime_density']
-        )
+        return pd.DataFrame(self.estimator.predict(x), index=x.index,
+                            columns=['crime_density'])
 
 
 class PredictionPipeline(RegressorMixin, BaseEstimator):
     """
-    Complete pipeline for crime density prediction.
+    End-to-end crime hotspot prediction.
+
+    The pipeline chains three stages: a spatio-temporal ``mapping`` (e.g.
+    :class:`predspot.crime_mapping.KDE`) that turns events into a series per
+    place and period; a feature extraction step (e.g.
+    :class:`predspot.utilities.PandasFeatureUnion` of lag features) and a
+    scikit-learn ``estimator`` (or ``Pipeline``) that learns to predict the
+    next period's value from the features.
 
     Args:
-        mapping: Spatial mapping transformer
-        fextraction: Feature extraction transformer
-        estimator: Scikit-learn compatible pipeline or estimator
-        debug (bool, optional): Enable debug printing. Defaults to False
+        mapping: A :class:`predspot.crime_mapping.SpatioTemporalMapping`.
+        fextraction: A transformer taking the series and returning features.
+        estimator: A scikit-learn regressor or ``Pipeline`` whose last step
+            returns a DataFrame with a ``crime_density`` column (see
+            :class:`Model`).
+        random_state (int, optional): Seed used to shuffle the training rows.
     """
 
-    def __init__(self, mapping, fextraction, estimator, debug=False):
-        self._mapping = mapping
-        self._fextraction = fextraction
-        self._estimator = estimator
+    def __init__(self, mapping, fextraction, estimator, random_state=None):
+        self.mapping = mapping
+        self.fextraction = fextraction
+        self.estimator = estimator
+        self.random_state = random_state
+        self._offset = tfreq_offset(mapping.tfreq)
         self._stseries = None
         self._dataset = None
-        self.debug = debug
-        
-        if self.debug:
-            print("Initializing PredictionPipeline", flush=True)
-            
-        if mapping._tfreq == 'M':
-            self._offset = pd.tseries.offsets.MonthEnd(1)
-        elif mapping._tfreq == 'W':
-            self._offset = pd.tseries.offsets.Week(1)
-        elif mapping._tfreq == 'D':
-            self._offset = pd.tseries.offsets.Day(1)
+        self._X = None
+        self._t_plus_one = None
 
     @property
     def grid(self):
-        """GeoDataFrame: Spatial grid used for mapping"""
-        return self._mapping._grid
+        """GeoDataFrame: Spatial grid used by the mapping."""
+        return self.mapping._grid
 
     @property
     def dataset(self):
-        """Dataset: Current dataset being used"""
+        """Dataset: The dataset the pipeline was fitted on."""
         return self._dataset
 
     @property
     def stseries(self):
-        """pandas.Series: Spatio-temporal series"""
+        """pandas.Series: Spatio-temporal series (observed + predicted periods)."""
         return self._stseries
+
+    @property
+    def features(self):
+        """pandas.DataFrame: Features of every ``(t, places)`` row."""
+        return self._X
+
+    @property
+    def next_time(self):
+        """pandas.Timestamp: The period that the next ``predict`` call forecasts."""
+        return self._t_plus_one
+
+    def _check_fitted(self):
+        if self._X is None:
+            raise RuntimeError('This pipeline was not fitted yet.')
 
     @property
     def feature_importances(self):
         """
-        Get feature importance scores.
+        Importance of each selected feature.
+
+        Works when ``estimator`` is a ``Pipeline`` whose last step exposes
+        ``feature_importances_`` (e.g. :class:`Model` around a random
+        forest); an optional :class:`FeatureSelection` step before it is
+        taken into account.
 
         Returns:
-            pandas.DataFrame: Feature importance scores
-
-        Raises:
-            Exception: If model hasn't been fitted or doesn't support feature importances
+            pandas.DataFrame: Importance per feature, sorted descending.
         """
-        assert self._X is not None, 'this instance was not fitted yet.'
+        self._check_fitted()
+        steps = getattr(self.estimator, 'steps', [('model', self.estimator)])
+        model = steps[-1][1]
         try:
-            return pd.DataFrame(
-                self._estimator.steps[-1][1]._estimator.feature_importances_,
-                index=self._X.columns[self._estimator.steps[-2][1]._estimator.support_],
-                columns=['importance']
-            )
-        except:
-            raise Exception('estimator used has not feature importances implemented yet.')
-
-    def evaluate(self, scoring, cv=5):
-        """
-        Evaluate model performance using time series cross-validation.
-
-        Args:
-            scoring (str): Scoring metric ('r2' or 'mse')
-            cv (int): Number of cross-validation folds
-
-        Returns:
-            list: Scores for each fold
-
-        Raises:
-            Exception: If scoring metric is invalid
-        """
-        if self.debug:
-            print(f"Evaluating model with {cv}-fold time series CV", flush=True)
-            
-        assert self._X is not None, 'this instance was not fitted yet.'
-        if scoring == 'r2':
-            scoring = r2_score
-        elif scoring == 'mse':
-            scoring = mean_squared_error
-        else:
-            raise Exception('invalid scoring. Try "r2" or "mse".')
-            
-        timestamps = self._X.index.get_level_values('t').unique()\
-            .intersection(self._stseries.index.get_level_values('t').unique())
-        assert isinstance(cv, int) and cv < len(timestamps), \
-            'cv must be an integer and not higher than the number of timestamps available.'
-            
-        scores = []
-        for train_t, test_t in TimeSeriesSplit(cv).split(timestamps):
-            if self.debug:
-                print(f"CV fold - train size: {len(train_t)}, test size: {len(test_t)}", flush=True)
-                
-            X_train = self._X.loc[idx[timestamps[train_t], :], :].sample(frac=1)
-            X_test = self._X.loc[idx[timestamps[test_t], :], :]
-            y_train = self._stseries.loc[X_train.index]
-            y_test = self._stseries.loc[timestamps[test_t]]
-            self._estimator.fit(X_train, y_train)
-            y_pred = self._estimator.predict(X_test)
-            scores.append(scoring(y_test, y_pred))
-            
-        self.fit(self._dataset)  # back to normal
-        return scores
+            importances = model.feature_importances_
+        except AttributeError as exc:
+            raise AttributeError('The estimator does not expose feature_importances_.') from exc
+        columns = self._X.columns
+        for _, step in steps[:-1]:
+            if hasattr(step, 'support_'):
+                columns = columns[step.support_]
+        return (pd.DataFrame({'importance': importances}, index=columns)
+                .sort_values('importance', ascending=False))
 
     def fit(self, dataset, y=None):
         """
-        Fit the complete prediction pipeline.
+        Fit the mapping, the features and the estimator on a dataset.
 
         Args:
-            dataset: Input dataset containing crimes and study area
-            y: Ignored, present for scikit-learn compatibility
+            dataset (predspot.Dataset): Crime events and study area.
+            y: Ignored; present for scikit-learn compatibility.
 
         Returns:
-            self: The fitted instance
-
-        Raises:
-            Exception: If fitting fails
+            PredictionPipeline: ``self``.
         """
-        if self.debug:
-            print("Fitting prediction pipeline", flush=True)
-            
+        logger.debug('Fitting prediction pipeline')
         self._dataset = dataset
-        self._stseries = self._mapping.fit_transform(dataset.crimes)
-        self._X = self._fextraction.fit_transform(self._stseries)
-        t0 = self._X.index.get_level_values('t').unique().min()
-        tf = self._stseries.index.get_level_values('t').unique().max()
-        X = self._X.loc[t0:tf].sample(frac=1)  # shuffle for training
-        y = self._stseries.loc[X.index]        # shuffle for training
-        
-        try:
-            self._estimator.fit(X, y)
-        except Exception as e:
-            raise Exception(f'ERROR: {t0}, {tf} \nX: {self._X.loc[t0:tf]}') from e
-            
-        self._t_plus_one = self._X.index.get_level_values('t').unique()[-1]
+        self._stseries = self.mapping.fit_transform(dataset.crimes)
+        self._X = self.fextraction.fit_transform(self._stseries)
+        t0 = self._X.index.get_level_values('t').min()
+        tf = self._stseries.index.get_level_values('t').max()
+        X = self._X.loc[t0:tf].sample(frac=1, random_state=self.random_state)
+        y = self._stseries.loc[X.index]
+        self.estimator.fit(X, y)
+        self._t_plus_one = self._X.index.get_level_values('t').max()
+        logger.debug('Pipeline fitted on %d rows; next period is %s', len(X), self._t_plus_one)
         return self
 
     def predict(self):
         """
-        Make predictions for the next time step.
+        Forecast the next period for every place.
+
+        Each call appends its forecast to the series and recomputes the
+        features, so calling it repeatedly walks forward in time.
 
         Returns:
-            pandas.DataFrame: Predictions for next time step
+            pandas.DataFrame: ``crime_density`` indexed by ``(t, places)``
+            for the forecast period.
         """
-        if self.debug:
-            print(f"Predicting for time step: {self._t_plus_one}", flush=True)
-            
-        X = self._X.loc[[self._t_plus_one],:]
-        y_pred = self._estimator.predict(X)
-        y_pred = pd.DataFrame(y_pred, index=X.index)
-        self._stseries = self._stseries.append(y_pred['crime_density'])
-        self._X = self._fextraction.transform(self._stseries)
-        self._t_plus_one += self._offset
+        self._check_fitted()
+        X = self._X.loc[[self._t_plus_one], :]
+        y_pred = pd.DataFrame(self.estimator.predict(X), index=X.index)
+        y_pred.columns = ['crime_density']
+        logger.debug('Predicted %d places for %s', len(y_pred), self._t_plus_one)
+        self._stseries = pd.concat([self._stseries, y_pred['crime_density']]).sort_index()
+        self._stseries.name = 'crime_density'
+        self._X = self.fextraction.transform(self._stseries)
+        self._t_plus_one = self._t_plus_one + self._offset
         return y_pred
+
+    def evaluate(self, scoring='r2', cv=5):
+        """
+        Score the estimator with time series cross-validation.
+
+        Periods are split in ``cv`` consecutive folds
+        (:class:`sklearn.model_selection.TimeSeriesSplit`); the estimator is
+        refitted on the original data afterwards.
+
+        Args:
+            scoring (str): ``'r2'`` or ``'mse'``.
+            cv (int): Number of folds (must be lower than the number of periods).
+
+        Returns:
+            list: One score per fold.
+        """
+        self._check_fitted()
+        if scoring not in SCORERS:
+            raise ValueError('invalid scoring. Try "r2" or "mse".')
+        scorer = SCORERS[scoring]
+        timestamps = (self._X.index.get_level_values('t').unique()
+                      .intersection(self._stseries.index.get_level_values('t').unique())
+                      .sort_values())
+        if not isinstance(cv, int) or cv >= len(timestamps):
+            raise ValueError('cv must be an integer lower than the number of periods.')
+        scores = []
+        for train_t, test_t in TimeSeriesSplit(cv).split(timestamps):
+            X_train = (self._X.loc[idx[timestamps[train_t], :], :]
+                       .sample(frac=1, random_state=self.random_state))
+            X_test = self._X.loc[idx[timestamps[test_t], :], :]
+            y_train = self._stseries.loc[X_train.index]
+            y_test = self._stseries.loc[X_test.index]
+            self.estimator.fit(X_train, y_train)
+            y_pred = self.estimator.predict(X_test)
+            scores.append(scorer(y_test, y_pred))
+        logger.debug('%s-fold CV %s scores: %s', cv, scoring, scores)
+        self.fit(self._dataset)  # back to normal
+        return scores

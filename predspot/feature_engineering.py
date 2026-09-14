@@ -1,253 +1,216 @@
 """
 Feature Engineering Module
+==========================
 
-This module provides classes for time series feature engineering and transformation,
-including autoregressive features, differencing, seasonality, and trend decomposition.
+Turns the spatio-temporal series produced by a mapping (see
+:mod:`predspot.crime_mapping`) into lagged features, one row per
+``(t, places)``. Each feature class applies a time series transformation to
+the history of every place and then builds ``lags`` lagged columns from it:
+
+* :class:`AR` — the raw series (autoregressive features);
+* :class:`Diff` — first differences;
+* :class:`Seasonality` — the seasonal component of an STL decomposition;
+* :class:`Trend` — the trend component of an STL decomposition.
+
+The output always contains one extra row for the period right after the last
+observed one, so that the fitted model can forecast the next period.
 """
 
 __author__ = 'Adelson Araujo'
 
+import logging
 from abc import abstractmethod
-from numpy import vstack
+
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from statsmodels.tsa.seasonal import STL
 
+from predspot.crime_mapping import tfreq_offset
+
+logger = logging.getLogger(__name__)
+
+
+def infer_offset(time_index):
+    """
+    Infer the :class:`pandas.DateOffset` between consecutive periods.
+
+    Args:
+        time_index (pandas.DatetimeIndex): Unique, sorted period labels.
+
+    Returns:
+        pandas.DateOffset: The offset separating consecutive periods.
+
+    Raises:
+        ValueError: If the frequency cannot be inferred (e.g. fewer than 3
+            periods); pass ``tfreq`` explicitly in that case.
+    """
+    time_index = pd.DatetimeIndex(time_index).unique().sort_values()
+    freq = pd.infer_freq(time_index) if len(time_index) >= 3 else None
+    if freq is None:
+        raise ValueError('Could not infer the time frequency of the series; '
+                         'pass `tfreq` explicitly.')
+    return pd.tseries.frequencies.to_offset(freq)
+
 
 class TimeSeriesFeatures(BaseEstimator, TransformerMixin):
     """
-    Base class for time series feature engineering.
+    Base class for lagged time series features.
 
     Args:
-        lags (int): Number of time lags to use for feature creation
-        tfreq (str): Time frequency ('D' for daily, 'W' for weekly, 'M' for monthly)
-        debug (bool, optional): Enable debug printing. Defaults to False
-
-    Raises:
-        AssertionError: If lags is not a positive integer or tfreq is invalid
+        lags (int): Number of lagged columns to create (> 1).
+        tfreq (str, optional): Time frequency of the series (``'M'``, ``'W'``
+            or ``'D'``). If omitted it is inferred from the series index.
     """
 
-    def __init__(self, lags, tfreq, debug=False):
-        self.debug = debug
-        if self.debug:
-            print(f"Initializing TimeSeriesFeatures with lags={lags}, freq={tfreq}", flush=True)
-            
-        assert isinstance(lags, int) and lags > 1, \
-            '`lags` must be a positive integer.'
-        self._lags = lags
-        assert tfreq in ['D', 'W', 'M'], \
-            '`tfreq` not allowed, choose between `D`, `W`, `M`.'
-        self._tfreq = tfreq
-
-    @property
-    def lags(self):
-        """int: Number of time lags"""
-        return self._lags
+    def __init__(self, lags, tfreq=None):
+        if not isinstance(lags, int) or lags < 2:
+            raise ValueError('`lags` must be an integer greater than 1.')
+        self.lags = lags
+        self.tfreq = tfreq
+        self._offset = tfreq_offset(tfreq) if tfreq is not None else None
 
     @property
     def label(self):
-        """str: Feature label identifier"""
-        return 'feature'  # override this label if implementing a new feature
+        """str: Prefix of the feature columns (override in subclasses)."""
+        return 'feature'
 
     @abstractmethod
     def apply_ts_decomposition(self, ts):
         """
-        Apply time series decomposition.
+        Transform the time series of one place before lagging it.
 
         Args:
-            ts (pandas.Series): Input time series
+            ts (pandas.Series): Series of one place indexed by time.
 
         Returns:
-            pandas.Series: Transformed time series
+            pandas.Series: Transformed series.
         """
-        pass
+
+    def fit(self, x=None, y=None):
+        """No-op; present for scikit-learn compatibility."""
+        return self
 
     def make_lag_df(self, ts):
         """
-        Create lagged features dataframe.
+        Build the lagged feature columns of one time series.
 
         Args:
-            ts (pandas.Series): Input time series
+            ts (pandas.Series): Series indexed by time.
 
         Returns:
-            tuple: (lag_df, aligned_ts) - Lagged features and aligned original series
-
-        Raises:
-            AssertionError: If series length is less than number of lags
+            tuple: ``(lag_df, ts_aligned)`` — the lagged features and the
+            original series restricted to the same index.
         """
-        if self.debug:
-            print(f"Creating lag features for series of length {len(ts)}", flush=True)
-            
-        assert len(ts) > self.lags, "`lags` are higher than temporal units."
-        lag_df = pd.concat([ts.shift(lag) for lag in range(1, self.lags+1)], axis=1)
+        if len(ts) <= self.lags:
+            raise ValueError('`lags` is higher than the number of time periods.')
+        lag_df = pd.concat([ts.shift(lag) for lag in range(1, self.lags + 1)], axis=1)
         lag_df = lag_df.iloc[self.lags:]
-        lag_df.columns = ['{}_{}'.format(self.label, i) for i in range(1, self.lags+1)]
+        lag_df.columns = [f'{self.label}_{i}' for i in range(1, self.lags + 1)]
         return lag_df, ts.loc[lag_df.index]
 
     def transform(self, stseries):
         """
-        Transform the input series into lagged features.
+        Compute lagged features for every place.
 
         Args:
-            stseries (pandas.Series): Input time series with multi-index (time, places)
+            stseries (pandas.Series): Series indexed by ``(t, places)``.
 
         Returns:
-            pandas.DataFrame: Transformed features
+            pandas.DataFrame: Features indexed by ``(t, places)``, including
+            one row for the period after the last observed one.
         """
-        if self.debug:
-            print(f"Transforming series with {len(stseries)} observations", flush=True)
-            
-        X = pd.DataFrame()
-        if self._tfreq=='M':
-            next_time = pd.tseries.offsets.MonthEnd(1)
-        elif self._tfreq=='W':
-            next_time = pd.tseries.offsets.Week(1)
-        elif self._tfreq=='D':
-            next_time = pd.tseries.offsets.Day(1)
-            
+        times = stseries.index.get_level_values('t')
+        offset = self._offset if self._offset is not None else infer_offset(times)
         places = stseries.index.get_level_values('places').unique()
+        logger.debug('%s: computing %d lags for %d places',
+                     type(self).__name__, self.lags, len(places))
+        frames = []
         for place in places:
-            if self.debug:
-                print(f"Processing features for place: {place}", flush=True)
-                
-            ts = stseries.loc[pd.IndexSlice[:, place]]
+            ts = stseries.xs(place, level='places').sort_index()
             ts = self.apply_ts_decomposition(ts)
-            ts.loc[ts.index[-1] + next_time] = None
+            ts.loc[ts.index[-1] + offset] = None  # next period, to be forecast
             f, _ = self.make_lag_df(ts)
             f['places'] = place
-            f = f.set_index('places', append=True)
-            X = X.append(f)
-        X = X.sort_index()
-        return X
+            frames.append(f.set_index('places', append=True))
+        X = pd.concat(frames)
+        X.index.names = ['t', 'places']
+        return X.sort_index()
 
 
 class AR(TimeSeriesFeatures):
-    """
-    Autoregressive features implementation.
-    """
+    """Autoregressive features: lags of the raw series."""
 
     @property
     def label(self):
-        """str: Feature label for autoregressive features"""
         return 'ar'
 
     def apply_ts_decomposition(self, ts):
-        """
-        Apply autoregressive transformation (identity).
-
-        Args:
-            ts (pandas.Series): Input time series
-
-        Returns:
-            pandas.Series: Original time series
-        """
         return ts
 
 
 class Diff(TimeSeriesFeatures):
-    """
-    Difference features implementation.
-    """
+    """Lags of the first difference of the series."""
 
     @property
     def label(self):
-        """str: Feature label for difference features"""
         return 'diff'
 
     def apply_ts_decomposition(self, ts):
-        """
-        Apply difference transformation.
-
-        Args:
-            ts (pandas.Series): Input time series
-
-        Returns:
-            pandas.Series: Differenced time series
-        """
-        return ts.diff()[1:]
+        return ts.diff().iloc[1:]
 
 
-class Seasonality(TimeSeriesFeatures):
-    """
-    Seasonal decomposition features implementation.
-    """
+class _STLFeatures(TimeSeriesFeatures):
+    """Shared STL decomposition; ``lags`` is also used as the STL period."""
+
+    component = None
+
+    def apply_ts_decomposition(self, ts):
+        if len(ts) < 2 * self.lags:
+            raise ValueError(f'{type(self).__name__} needs at least 2 * lags '
+                             f'({2 * self.lags}) periods; got {len(ts)}.')
+        result = STL(ts, period=self.lags).fit()
+        return getattr(result, self.component)
+
+
+class Seasonality(_STLFeatures):
+    """Lags of the seasonal component of an STL decomposition (period = lags)."""
+
+    component = 'seasonal'
 
     @property
     def label(self):
-        """str: Feature label for seasonal features"""
         return 'seasonal'
 
-    def apply_ts_decomposition(self, ts):
-        """
-        Extract seasonal component from time series.
 
-        Args:
-            ts (pandas.Series): Input time series
+class Trend(_STLFeatures):
+    """Lags of the trend component of an STL decomposition (period = lags)."""
 
-        Returns:
-            pandas.Series: Seasonal component
-        """
-        if self.debug:
-            print(f"Extracting seasonality with period={self._lags}", flush=True)
-        return STL(ts, period=self._lags).seasonal
-
-
-class Trend(TimeSeriesFeatures):
-    """
-    Trend decomposition features implementation.
-    """
+    component = 'trend'
 
     @property
     def label(self):
-        """str: Feature label for trend features"""
         return 'trend'
-
-    def apply_ts_decomposition(self, ts):
-        """
-        Extract trend component from time series.
-
-        Args:
-            ts (pandas.Series): Input time series
-
-        Returns:
-            pandas.Series: Trend component
-        """
-        if self.debug:
-            print(f"Extracting trend with period={self._lags}", flush=True)
-        return STL(ts, period=self._lags).trend
 
 
 class FeatureScaling(TransformerMixin, BaseEstimator):
     """
-    Feature scaling transformer.
+    Wrap a scikit-learn scaler so that it returns DataFrames.
 
     Args:
-        estimator: Scikit-learn compatible scaling estimator
-        debug (bool, optional): Enable debug printing. Defaults to False
+        estimator: Any scikit-learn transformer (e.g. ``QuantileTransformer``).
     """
 
-    def __init__(self, estimator, debug=False):
-        self.debug = debug
-        self._estimator = estimator
-        
-        if self.debug:
-            print("Initializing FeatureScaling", flush=True)
+    def __init__(self, estimator):
+        self.estimator = estimator
+
+    def fit(self, x, y=None):
+        self.estimator.fit(x, y)
+        self.is_fitted_ = True
+        return self
+
+    def __sklearn_is_fitted__(self):
+        return getattr(self, 'is_fitted_', False)
 
     def transform(self, x):
-        """
-        Transform features using the scaling estimator.
-
-        Args:
-            x (pandas.DataFrame): Input features
-
-        Returns:
-            pandas.DataFrame: Scaled features
-        """
-        if self.debug:
-            print(f"Scaling features of shape {x.shape}", flush=True)
-            
-        return pd.DataFrame(
-            self._estimator.transform(x), 
-            index=x.index,
-            columns=x.columns
-        )
+        return pd.DataFrame(self.estimator.transform(x),
+                            index=x.index, columns=x.columns)
