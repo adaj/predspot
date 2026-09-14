@@ -67,6 +67,23 @@ from predspot.crime_mapping import QuadratCount, create_gridhexagonal
 mapping = QuadratCount(tfreq='W', grid=create_gridhexagonal(study_area_gdf, resolution=1))
 ```
 
+### Study area from OpenStreetMap and synthetic data
+
+You do not need real data to try Predspot. Fetch a city boundary from
+OpenStreetMap (`pip install "predspot[osm]"`) and generate synthetic events
+with spatial hotspots and realistic temporal patterns (trend, annual cycle,
+day-of-week and hour-of-day profiles):
+
+```python
+from predspot import Dataset, load_study_area, generate_crimes
+
+study_area = load_study_area("Natal, Rio Grande do Norte, Brazil")
+crimes = generate_crimes(study_area, n_events=5000, n_hotspots=4,
+                         start="2019-01-01", end="2020-12-31", seed=0)
+dataset = Dataset(crimes, study_area)
+dataset.plot()
+```
+
 Or run the default pipeline in one call:
 
 ```python
@@ -80,7 +97,7 @@ print(pipeline.evaluate('r2', cv=3))
 
 ## Development ⚡
 
-Predspot has four main modules:
+Predspot has five main modules:
 
 `dataset_preparation`: Module for preparing and managing crime datasets and study areas.
 
@@ -90,12 +107,15 @@ Predspot has four main modules:
 
 `ml_modelling`: Module that implements the prediction pipeline and model evaluation.
 
+`synthetic`: Module that generates synthetic crime events (hotspots + temporal patterns) inside any study area.
+
 ### Installation steps 🛠️
 
 Predspot requires Python 3.10 or newer.
 
 ```bash
 pip install predspot              # from PyPI
+pip install "predspot[osm]"       # + study areas from OpenStreetMap (osmnx)
 pip install "predspot[contour]"   # + GeoJSON contour export (geojsoncontour)
 ```
 
@@ -104,7 +124,7 @@ From source, for development:
 ```bash
 git clone https://github.com/adaj/predspot.git
 cd predspot
-pip install -e ".[dev,contour]"
+pip install -e ".[dev,osm,contour]"
 ```
 
 Core dependencies (installed automatically): pandas, geopandas, shapely,

@@ -8,7 +8,7 @@ Thanks for your interest in Predspot! Issues and pull requests are welcome.
 git clone https://github.com/adaj/predspot.git
 cd predspot
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,contour]"
+pip install -e ".[dev,osm,contour]"
 ```
 
 ## Checks
@@ -17,6 +17,7 @@ pip install -e ".[dev,contour]"
 ruff check src tests          # lint
 ruff format src tests         # format
 pytest                        # tests (~10 s)
+PREDSPOT_NETWORK_TESTS=1 pytest tests/test_load_study_area.py  # also query OpenStreetMap
 ```
 
 CI runs the same checks on Python 3.10 to 3.13 for every pull request.

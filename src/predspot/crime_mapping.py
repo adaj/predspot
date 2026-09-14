@@ -14,6 +14,9 @@ per time period. Two families of mapping are available:
 Both produce the same output format, a :class:`pandas.Series` named
 ``crime_density`` indexed by ``(t, places)``, so they are interchangeable
 inside :class:`predspot.ml_modelling.PredictionPipeline`.
+
+The study area itself can be fetched from OpenStreetMap with
+:func:`load_study_area` (requires the optional ``osmnx`` dependency).
 """
 
 __author__ = "Adelson Araujo"
@@ -81,6 +84,54 @@ def tfreq_offset(tfreq):
     if alias == "W":
         return pd.offsets.Week(1)
     return pd.offsets.Day(1)
+
+
+def load_study_area(place, crs=WGS84, which_result=None):
+    """
+    Fetch the boundary polygon of a place from OpenStreetMap.
+
+    Uses `osmnx <https://osmnx.readthedocs.io>`_ (optional dependency:
+    ``pip install predspot[osm]``) to geocode ``place`` with Nominatim and
+    return its administrative boundary, ready to be used as the
+    ``study_area`` of :class:`predspot.Dataset` or as the ``bbox`` of the
+    ``create_grid*`` functions.
+
+    Args:
+        place (str or list): Name of the place as Nominatim understands it,
+            e.g. ``"Natal, Rio Grande do Norte, Brazil"``. A list of names
+            returns one row per place.
+        crs: CRS of the returned GeoDataFrame (default WGS84).
+        which_result (int, optional): Forwarded to
+            ``osmnx.geocode_to_gdf`` to pick a specific Nominatim match when
+            the first one is not the boundary you want.
+
+    Returns:
+        GeoDataFrame: One row per place with ``name``, ``display_name``,
+        ``osm_type``, ``osm_id`` and a (Multi)Polygon ``geometry``.
+
+    Raises:
+        ImportError: If ``osmnx`` is not installed.
+        ValueError: If Nominatim returns a point instead of a boundary
+            polygon for the query.
+    """
+    try:
+        import osmnx as ox
+    except ImportError as exc:
+        raise ImportError(
+            "load_study_area requires the optional dependency `osmnx`: pip install predspot[osm]"
+        ) from exc
+    logger.debug("Geocoding study area %r with osmnx", place)
+    gdf = ox.geocode_to_gdf(place, which_result=which_result)
+    if not gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+        bad = gdf.loc[~gdf.geom_type.isin(["Polygon", "MultiPolygon"]), "display_name"]
+        raise ValueError(
+            "OpenStreetMap returned a non-polygon geometry for "
+            f"{bad.tolist()}. Try a more specific query (e.g. add the state "
+            "and country) or a different `which_result`."
+        )
+    columns = [c for c in ("name", "display_name", "osm_type", "osm_id") if c in gdf.columns]
+    gdf = gdf[columns + ["geometry"]].reset_index(drop=True)
+    return gdf.to_crs(crs)
 
 
 def _check_bbox(bbox):

@@ -12,6 +12,11 @@ Revival release: the code base now targets Python 3.10+ with current
 versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
 
 ### Added
+- `crime_mapping.load_study_area("City, Country")` fetches a study area
+  boundary from OpenStreetMap via `osmnx` (`pip install predspot[osm]`).
+- `synthetic.generate_crimes` generates synthetic events inside any study
+  area: Gaussian hotspots plus uniform background, with trend, annual cycle,
+  day-of-week and hour-of-day patterns; reproducible with `seed`.
 - `QuadratCount` mapping (event counts per cell) as a first-class alternative
   to `KDE`, usable with hexagonal (`create_gridhexagonal`) and square
   (`create_gridsquares`) grids inside `PredictionPipeline`.
