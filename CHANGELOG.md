@@ -6,9 +6,9 @@ All notable changes to Predspot are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-09
+## [1.0.0] - 2026-09-14
 
-Revival release: the code base now targets Python 3.10+ with current
+First stable release and revival of the project: the code base now targets Python 3.10+ with current
 versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
 
 ### Added
@@ -43,6 +43,8 @@ versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
   `debug=` arguments were removed.
 - Wrapper estimators expose their inner estimator as `.estimator`
   (previously `._estimator`).
+- Version jumps from 0.1.x to 1.0.0: the public API (`Dataset`, mappings,
+  feature classes, `PredictionPipeline`) is considered stable from here on.
 - `Dataset` no longer modifies the input DataFrame and requires the study
   area to have a CRS.
 - Grid centroids are computed in a projected CRS; grids accept study areas in
