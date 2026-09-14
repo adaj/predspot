@@ -1,184 +1,157 @@
 """
 Pipeline Module
+===============
 
-This module provides the main pipeline functionality for crime prediction,
-including data loading, preprocessing, and model execution.
+Convenience functions to run a sensible default prediction pipeline in one
+call, and to generate small synthetic datasets for quick experiments.
 
 Example:
     >>> from predspot.pipeline import generate_testdata, run_prediction_pipeline
-    >>> crime_data, study_area = generate_testdata(10000, '2020-01-01', '2020-12-31')
-    >>> results = run_prediction_pipeline(crime_data, study_area)
+    >>> crimes, study_area = generate_testdata(2000, '2019-01-01', '2020-12-31', seed=0)
+    >>> predictions, pipeline = run_prediction_pipeline(crimes, study_area, grid_resolution=1)
 """
 
 __author__ = 'Adelson Araujo'
 
+import logging
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
+from shapely.geometry import box
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.feature_selection import RFE
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import QuantileTransformer
-from sklearn.feature_selection import RFE
-from sklearn.ensemble import RandomForestRegressor
 
-from predspot import dataset_preparation
-from predspot import crime_mapping
-from predspot import feature_engineering
-from predspot import ml_modelling
+from predspot import crime_mapping, dataset_preparation, feature_engineering, ml_modelling
 from predspot.utilities import PandasFeatureUnion
 
+logger = logging.getLogger(__name__)
 
-def generate_testdata(n_points, start_time, end_time, debug=False):
+# A ~10 x 10 km box (west, south, east, north) used as default study area.
+DEFAULT_BOUNDS = (-35.30, -5.90, -35.20, -5.80)
+
+
+def generate_testdata(n_points, start_time, end_time, bounds=DEFAULT_BOUNDS, seed=None):
     """
-    Generate synthetic crime data for testing.
+    Generate uniformly random crime events inside a rectangular study area.
 
     Args:
-        n_points (int): Number of crime incidents to generate
-        start_time (str): Start date in 'YYYY-MM-DD' format
-        end_time (str): End date in 'YYYY-MM-DD' format
-        debug (bool, optional): Enable debug printing. Defaults to False
+        n_points (int): Number of events.
+        start_time (str): First possible timestamp (``'YYYY-MM-DD'``).
+        end_time (str): Last possible timestamp (``'YYYY-MM-DD'``).
+        bounds (tuple): ``(west, south, east, north)`` in WGS84 degrees.
+        seed (int, optional): Seed for reproducibility.
 
     Returns:
-        tuple: (crimes_df, study_area_gdf) - Generated crime data and study area
-
-    Example:
-        >>> crimes, area = generate_testdata(1000, '2020-01-01', '2020-12-31')
+        tuple: ``(crimes, study_area)`` — a DataFrame with ``tag``, ``t``,
+        ``lon``, ``lat`` and a one-row GeoDataFrame with the study area.
     """
-    if debug:
-        print(f"Generating {n_points} test data points from {start_time} to {end_time}", flush=True)
-
-    study_area = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
-    study_area = study_area.loc[study_area['name']=='Brazil']
-
-    crimes = pd.DataFrame()
-    crime_types = pd.Series(['burglary', 'assault', 'drugs', 'homicide'])
-    bounds = study_area.geometry.bounds.values[0]
-
-    if debug:
-        print("Generating random dates and locations", flush=True)
-
-    def random_dates(start, end, n=10):
-        """Generate random dates within a range."""
-        start, end = pd.to_datetime(start), pd.to_datetime(end)
-        start_u = start.value//10**9
-        end_u = end.value//10**9
-        return pd.to_datetime(np.random.randint(start_u, end_u, n), unit='s')
-
-    crimes['tag'] = crime_types.sample(n_points, replace=True,
-                                     weights=[1000, 100, 10, 1])
-    crimes['t'] = random_dates(start_time, end_time, n_points)
-    crimes['lat'] = np.random.uniform(bounds[1], bounds[3], n_points)
-    crimes['lon'] = np.random.uniform(bounds[0], bounds[2], n_points)
-    crimes.reset_index(drop=True, inplace=True)
-
-    if debug:
-        print("Test data generation complete", flush=True)
-
+    rng = np.random.default_rng(seed)
+    west, south, east, north = bounds
+    study_area = gpd.GeoDataFrame({'name': ['study_area']},
+                                  geometry=[box(west, south, east, north)], crs='EPSG:4326')
+    start, end = pd.Timestamp(start_time), pd.Timestamp(end_time)
+    seconds = rng.integers(0, int((end - start).total_seconds()), n_points)
+    tags = rng.choice(['burglary', 'assault', 'drugs', 'homicide'], size=n_points,
+                      p=np.array([1000, 100, 10, 1]) / 1111)
+    crimes = pd.DataFrame({
+        'tag': tags,
+        't': start + pd.to_timedelta(seconds, unit='s'),
+        'lon': rng.uniform(west, east, n_points),
+        'lat': rng.uniform(south, north, n_points),
+    })
+    logger.debug('Generated %d synthetic events', n_points)
     return crimes, study_area
 
 
-def run_prediction_pipeline(crime_data, study_area, crime_tags=None, time_range=None, 
-                          tfreq='M', grid_resolution=250, debug=False):
+def build_default_pipeline(study_area, tfreq='M', grid_resolution=1, lags=2,
+                           bandwidth='silverman', random_state=None):
     """
-    Run the complete crime prediction pipeline.
+    Build the default Predspot pipeline: KDE mapping, seasonal/trend/diff
+    features, quantile scaling, RFE feature selection and a random forest.
 
     Args:
-        crime_data (pandas.DataFrame): Crime incident data
-        study_area (geopandas.GeoDataFrame): Study area boundaries
-        crime_tags (list, optional): List of crime types to include
-        time_range (list, optional): Time range as ['HH:MM', 'HH:MM']
-        tfreq (str, optional): Time frequency ('M', 'W', 'D'). Defaults to 'M'
-        grid_resolution (float, optional): Spatial grid resolution in km. Defaults to 250
-        debug (bool, optional): Enable debug printing. Defaults to False
+        study_area (GeoDataFrame): Study area used to build the point grid.
+        tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
+        grid_resolution (float): Grid spacing in kilometers.
+        lags (int): Number of lags (and STL period) of the features.
+        bandwidth (str or float): KDE bandwidth, see :class:`predspot.crime_mapping.KDE`.
+        random_state (int, optional): Seed for the estimator and shuffling.
 
     Returns:
-        tuple: (predictions, pipeline) - Predicted crime densities and fitted pipeline
-
-    Raises:
-        ValueError: If input data is invalid or missing required columns
+        predspot.ml_modelling.PredictionPipeline: An unfitted pipeline.
     """
-    if debug:
-        print("Initializing prediction pipeline", flush=True)
-
-    # Validate input data
-    required_columns = ['tag', 't', 'lat', 'lon']
-    if not all(col in crime_data.columns for col in required_columns):
-        raise ValueError(f"Crime data must contain columns: {required_columns}")
-
-    # Filter by crime tags if specified
-    if crime_tags:
-        if debug:
-            print(f"Filtering for crime types: {crime_tags}", flush=True)
-        crime_data = crime_data.loc[crime_data['tag'].isin(crime_tags)]
-
-    # Filter by time range if specified
-    if time_range:
-        if debug:
-            print(f"Filtering for time range: {time_range}", flush=True)
-        time_ix = pd.DatetimeIndex(crime_data['t'])
-        crime_data = crime_data.iloc[time_ix.indexer_between_time(time_range[0], time_range[1])]
-
-    if debug:
-        print("Creating dataset", flush=True)
-    dataset = dataset_preparation.Dataset(crimes=crime_data, study_area=study_area)
-
-    if debug:
-        print("Building prediction pipeline", flush=True)
-    pred_pipeline = ml_modelling.PredictionPipeline(
-        mapping=crime_mapping.KDE(
-            tfreq=tfreq,
-            bandwidth='auto',
-            grid=crime_mapping.create_gridpoints(study_area, grid_resolution)
-        ),
+    grid = crime_mapping.create_gridpoints(study_area, grid_resolution)
+    return ml_modelling.PredictionPipeline(
+        mapping=crime_mapping.KDE(tfreq=tfreq, grid=grid, bandwidth=bandwidth),
         fextraction=PandasFeatureUnion([
-            ('seasonal', feature_engineering.Seasonality(lags=2)),
-            ('trend', feature_engineering.Trend(lags=2)),
-            ('diff', feature_engineering.Diff(lags=2))
+            ('seasonal', feature_engineering.Seasonality(lags=lags, tfreq=tfreq)),
+            ('trend', feature_engineering.Trend(lags=lags, tfreq=tfreq)),
+            ('diff', feature_engineering.Diff(lags=lags, tfreq=tfreq)),
         ]),
         estimator=Pipeline([
             ('f_scaling', feature_engineering.FeatureScaling(
-                QuantileTransformer(10, output_distribution='uniform'))),
+                QuantileTransformer(n_quantiles=10, output_distribution='uniform'))),
             ('f_selection', ml_modelling.FeatureSelection(
-                RFE(RandomForestRegressor()))),
-            ('model', ml_modelling.Model(RandomForestRegressor(n_estimators=50)))
-        ])
+                RFE(RandomForestRegressor(n_estimators=20, random_state=random_state)))),
+            ('model', ml_modelling.Model(
+                RandomForestRegressor(n_estimators=50, random_state=random_state))),
+        ]),
+        random_state=random_state,
     )
 
-    if debug:
-        print("Fitting pipeline", flush=True)
-    pred_pipeline.fit(dataset)
 
-    if debug:
-        print("Making predictions", flush=True)
-    predictions = pred_pipeline.predict()
-
-    if debug:
-        print("Pipeline execution complete", flush=True)
-
-    return predictions, pred_pipeline
-
-
-def evaluate_pipeline(pipeline, scoring='r2', cv=5, debug=False):
+def run_prediction_pipeline(crime_data, study_area, crime_tags=None, time_range=None,
+                            tfreq='M', grid_resolution=1, lags=2, random_state=None):
     """
-    Evaluate the prediction pipeline using cross-validation.
+    Fit the default pipeline on crime data and forecast the next period.
 
     Args:
-        pipeline (PredictionPipeline): Fitted prediction pipeline
-        scoring (str, optional): Scoring metric ('r2' or 'mse'). Defaults to 'r2'
-        cv (int, optional): Number of cross-validation folds. Defaults to 5
-        debug (bool, optional): Enable debug printing. Defaults to False
+        crime_data (pandas.DataFrame): Events with ``tag``, ``t``, ``lon``, ``lat``.
+        study_area (GeoDataFrame): Study area boundary.
+        crime_tags (list, optional): Keep only these crime types.
+        time_range (tuple, optional): ``('HH:MM', 'HH:MM')`` to keep only
+            events within this time of day.
+        tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
+        grid_resolution (float): Grid spacing in kilometers.
+        lags (int): Number of lags (and STL period) of the features.
+        random_state (int, optional): Seed for reproducibility.
 
     Returns:
-        list: Cross-validation scores
-
-    Example:
-        >>> scores = evaluate_pipeline(fitted_pipeline, scoring='r2', cv=5)
+        tuple: ``(predictions, pipeline)`` — the forecast for the next period
+        and the fitted :class:`predspot.ml_modelling.PredictionPipeline`.
     """
-    if debug:
-        print(f"Evaluating pipeline with {cv}-fold CV using {scoring} metric", flush=True)
+    missing = [c for c in ('tag', 't', 'lat', 'lon') if c not in crime_data.columns]
+    if missing:
+        raise ValueError(f'Crime data must contain columns tag, t, lat, lon; missing {missing}')
+    if crime_tags:
+        crime_data = crime_data.loc[crime_data['tag'].isin(crime_tags)]
+    if time_range:
+        time_ix = pd.DatetimeIndex(pd.to_datetime(crime_data['t']))
+        crime_data = crime_data.iloc[time_ix.indexer_between_time(time_range[0], time_range[1])]
 
+    dataset = dataset_preparation.Dataset(crimes=crime_data, study_area=study_area)
+    pipeline = build_default_pipeline(study_area, tfreq=tfreq, grid_resolution=grid_resolution,
+                                      lags=lags, random_state=random_state)
+    pipeline.fit(dataset)
+    predictions = pipeline.predict()
+    return predictions, pipeline
+
+
+def evaluate_pipeline(pipeline, scoring='r2', cv=5):
+    """
+    Cross-validate a fitted pipeline; see :meth:`PredictionPipeline.evaluate`.
+
+    Args:
+        pipeline (PredictionPipeline): A fitted pipeline.
+        scoring (str): ``'r2'`` or ``'mse'``.
+        cv (int): Number of folds.
+
+    Returns:
+        list: One score per fold.
+    """
     scores = pipeline.evaluate(scoring=scoring, cv=cv)
-
-    if debug:
-        print(f"Evaluation complete. Mean score: {np.mean(scores):.4f}", flush=True)
-
-    return scores 
+    logger.debug('Evaluation complete. Mean score: %.4f', np.mean(scores))
+    return scores

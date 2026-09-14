@@ -1,102 +1,202 @@
 """
 Crime Mapping Module
+====================
 
-This module provides functionality for spatial and temporal crime mapping analysis.
-It includes utilities for creating grid points, hexagonal grids, and implementing
-kernel density estimation for crime hotspot detection.
+Spatial and temporal crime mapping. This module turns a set of georeferenced,
+timestamped crime events into a *spatio-temporal series*: a value per grid cell
+per time period. Two families of mapping are available:
+
+* :class:`KDE` — kernel density estimation evaluated on a grid of **points**
+  (see :func:`create_gridpoints`). This is the default approach of Predspot.
+* :class:`QuadratCount` — plain event counts per **cell** of a polygonal grid
+  (see :func:`create_gridhexagonal` and :func:`create_gridsquares`).
+
+Both produce the same output format, a :class:`pandas.Series` named
+``crime_density`` indexed by ``(t, places)``, so they are interchangeable
+inside :class:`predspot.ml_modelling.PredictionPipeline`.
 """
 
 __author__ = 'Adelson Araujo'
-from abc import ABC, abstractmethod
+
+import logging
 import math
+from abc import ABC, abstractmethod
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.cluster import KMeans
-from shapely.geometry import Point, Polygon, MultiPoint
 from scipy.stats import gaussian_kde
+from shapely.geometry import Point, Polygon
+from sklearn.base import BaseEstimator, TransformerMixin
 
-pd.options.mode.chained_assignment = None
+logger = logging.getLogger(__name__)
+
+WGS84 = "EPSG:4326"
+
+# Approximate length of one degree at the equator, in km. Used to translate a
+# resolution given in km into degrees when building grids in WGS84.
+KM_PER_DEG_LON = 111.32
+KM_PER_DEG_LAT = 110.57
+
+# Public aliases accepted for the time frequency and the pandas offset alias
+# they map to. Old pandas used 'M' for month end; pandas >= 2.2 uses 'ME'.
+TFREQ_ALIASES = {
+    'M': 'ME', 'ME': 'ME', 'MONTH': 'ME', 'MONTHLY': 'ME',
+    'W': 'W', 'WEEK': 'W', 'WEEKLY': 'W',
+    'D': 'D', 'DAY': 'D', 'DAILY': 'D',
+}
 
 
-def create_gridpoints(bbox, resolution, return_coords=False, debug=False):
-    """
-    Create a grid of points within a given bounding box.
+def normalize_tfreq(tfreq):
+    """Translate a user-facing time frequency into a pandas offset alias.
 
     Args:
-        bbox (GeoDataFrame): Bounding box as a GeoDataFrame
-        resolution (float): Grid cell size in kilometers
-        return_coords (bool): If True, returns additional coordinate arrays
-        debug (bool): Enable debug printing
+        tfreq (str): One of ``'M'``/``'ME'`` (monthly), ``'W'`` (weekly) or
+            ``'D'`` (daily), case-insensitive.
 
     Returns:
-        GeoDataFrame or tuple: Grid points as GeoDataFrame, optionally with coordinate arrays
+        str: The pandas offset alias (``'ME'``, ``'W'`` or ``'D'``).
+
+    Raises:
+        ValueError: If ``tfreq`` is not one of the accepted values.
     """
-    if debug:
-        print(f"Creating grid with resolution: {resolution}km", flush=True)
-    
-    assert resolution > 0, \
-        "Invalid resolution."
-    assert isinstance(bbox, gpd.GeoDataFrame), \
-        'bbox must be geopandas GeoDataFrame.'
-    bounds = bbox.bounds
-    b_s, b_w = bounds.min().values[1], bounds.min().values[0]
-    b_n, b_e = bounds.max().values[3], bounds.max().values[2]
-    nlon = int(np.ceil((b_e-b_w) / (resolution/111.32)))
-    nlat = int(np.ceil((b_n-b_s) / (resolution/110.57)))
+    key = str(tfreq).upper()
+    if key not in TFREQ_ALIASES:
+        raise ValueError(
+            f"Invalid tfreq {tfreq!r}. Choose (M)onthly, (W)eekly or (D)aily.")
+    return TFREQ_ALIASES[key]
+
+
+def tfreq_offset(tfreq):
+    """Return the :class:`pandas.DateOffset` that advances one period of ``tfreq``."""
+    alias = normalize_tfreq(tfreq)
+    if alias == 'ME':
+        return pd.offsets.MonthEnd(1)
+    if alias == 'W':
+        return pd.offsets.Week(1)
+    return pd.offsets.Day(1)
+
+
+def _check_bbox(bbox):
+    if not isinstance(bbox, gpd.GeoDataFrame):
+        raise TypeError('bbox must be a geopandas GeoDataFrame.')
+    if bbox.crs is None:
+        raise ValueError('bbox must have a CRS (e.g. bbox.set_crs("EPSG:4326")).')
+    if len(bbox) == 0:
+        raise ValueError('bbox is empty.')
+
+
+def _wgs84_bounds(bbox):
+    """Total bounds (west, south, east, north) of ``bbox`` in WGS84 degrees."""
+    return bbox.to_crs(WGS84).total_bounds
+
+
+def _clip_to_bbox(grid, bbox):
+    """Keep only grid rows that intersect ``bbox`` (both in the same CRS)."""
+    keep = gpd.sjoin(grid, bbox[['geometry']], how='inner',
+                     predicate='intersects').index.unique()
+    if len(keep) == 0:
+        raise ValueError(
+            'resolution too big/coarse. No cells intersect the study area.')
+    return grid.loc[grid.index.isin(keep)]
+
+
+def _add_centroid_lonlat(grid):
+    """Add ``lon``/``lat`` columns with cell centroids computed in a projected CRS."""
+    projected = grid.geometry.to_crs(grid.estimate_utm_crs())
+    centroids = projected.centroid.to_crs(WGS84)
+    grid = grid.copy()
+    grid['lon'] = centroids.x.values
+    grid['lat'] = centroids.y.values
+    return grid
+
+
+def create_gridpoints(bbox, resolution, return_coords=False):
+    """
+    Create a regular grid of points covering a study area.
+
+    This is the grid used by :class:`KDE`: the density is evaluated at each
+    point. The grid is built in WGS84 with the requested spacing and then
+    re-projected to the CRS of ``bbox``.
+
+    Args:
+        bbox (GeoDataFrame): Study area (any CRS, must be set).
+        resolution (float): Spacing between points, in kilometers.
+        return_coords (bool): If True, also return the full ``lon``/``lat``
+            meshgrids (before clipping), useful for contour plots.
+
+    Returns:
+        GeoDataFrame: Points intersecting ``bbox`` with ``lon``, ``lat`` and
+        ``geometry`` columns and an index named ``places``. When
+        ``return_coords`` is True, a tuple ``(gridpoints, lonv, latv)``.
+    """
+    if resolution <= 0:
+        raise ValueError('resolution must be a positive number of kilometers.')
+    _check_bbox(bbox)
+    logger.debug('Creating point grid with resolution %s km', resolution)
+
+    b_w, b_s, b_e, b_n = _wgs84_bounds(bbox)
+    nlon = max(int(np.ceil((b_e - b_w) / (resolution / KM_PER_DEG_LON))), 2)
+    nlat = max(int(np.ceil((b_n - b_s) / (resolution / KM_PER_DEG_LAT))), 2)
     lonv, latv = np.meshgrid(np.linspace(b_w, b_e, nlon), np.linspace(b_s, b_n, nlat))
-    gridpoints = pd.DataFrame(np.vstack([lonv.ravel(), latv.ravel()]).T,
-                              columns=['lon', 'lat'])
-    gridpoints['geometry'] = gridpoints.apply(lambda x: Point([x['lon'], x['lat']]),
-                                              axis=1)
-    gridpoints = gpd.GeoDataFrame(gridpoints)
-    gridpoints.crs = {'init': 'epsg:4326'}
-    gridpoints = gridpoints.to_crs(bbox.crs)
-    grid_ix = gpd.sjoin(gridpoints, bbox, op='intersects').index.unique()
-    if len(grid_ix) == 0:
-        raise Exception("resolution too big/coarse. No cells were generated.")
-    # elif len(grid_ix) / bbox.area.sum() > 10:
-    #     warnings.warn('resolution too fine/small. As consequence, your program' \
-    #         + 'may run very slowly.')
-    gridpoints = gridpoints.loc[grid_ix]
+    lon, lat = lonv.ravel(), latv.ravel()
+    gridpoints = gpd.GeoDataFrame(
+        {'lon': lon, 'lat': lat},
+        geometry=gpd.points_from_xy(lon, lat), crs=WGS84).to_crs(bbox.crs)
+    gridpoints = _clip_to_bbox(gridpoints, bbox)
     gridpoints.index.name = 'places'
     if return_coords:
         return gridpoints, lonv, latv
     return gridpoints
 
 
-def create_hexagon(l, x, y):
+def create_hexagon(side, x, y):
     """
-    Create a hexagonal polygon.
+    Create a flat-topped hexagonal polygon.
 
     Args:
-        l (float): Length of hexagon side
-        x (float): X-coordinate of center
-        y (float): Y-coordinate of center
+        side (float): Length of the hexagon side (circumradius), in the units
+            of ``x``/``y``.
+        x (float): X-coordinate of the center.
+        y (float): Y-coordinate of the center.
 
     Returns:
-        Polygon: Hexagonal polygon
+        Polygon: The hexagon.
     """
-    c = [[x + math.cos(math.radians(angle)) * l, y + math.sin(math.radians(angle)) * l] for angle in range(0, 360, 60)]
-    return Polygon(c)
+    return Polygon([
+        (x + math.cos(math.radians(angle)) * side,
+         y + math.sin(math.radians(angle)) * side)
+        for angle in range(0, 360, 60)])
 
 
 def create_gridhexagonal(bbox, resolution):
-    assert resolution > 0, \
-        "Invalid resolution."
-    resolution = ((resolution)**2 * (2/(3*(3**0.5)))) ** 0.5 # normalize resolution to have the same area as if it was a square
-    assert isinstance(bbox, gpd.GeoDataFrame), \
-        'bbox must be geopandas GeoDataFrame.'
-    bbox_ = list(bbox.bounds.min().values[:2]) + list(bbox.bounds.max().values[-2:])
-    x_min = min(bbox_[0], bbox_[2])
-    x_max = max(bbox_[0], bbox_[2])
-    y_min = min(bbox_[1], bbox_[3])
-    y_max = max(bbox_[1], bbox_[3])
-    grid = []
-    resolution = resolution/110.6
-    v_step = math.sqrt(3) * resolution
-    h_step = 1.5 * resolution
+    """
+    Create a hexagonal grid covering a study area.
+
+    Each hexagon has the same area as a square of side ``resolution`` km, so
+    hexagonal and square grids of the same resolution are comparable. The
+    grid is built in WGS84 and re-projected to the CRS of ``bbox``.
+
+    Args:
+        bbox (GeoDataFrame): Study area (any CRS, must be set).
+        resolution (float): Equivalent square side, in kilometers.
+
+    Returns:
+        GeoDataFrame: Hexagons intersecting ``bbox`` with ``geometry``,
+        ``lon`` and ``lat`` (centroid) columns and an index named ``places``.
+    """
+    if resolution <= 0:
+        raise ValueError('resolution must be a positive number of kilometers.')
+    _check_bbox(bbox)
+    logger.debug('Creating hexagonal grid with resolution %s km', resolution)
+
+    # Side length such that the hexagon area equals resolution**2.
+    side_km = math.sqrt(resolution ** 2 * 2 / (3 * math.sqrt(3)))
+    side = side_km / KM_PER_DEG_LAT  # degrees (isotropic approximation)
+    x_min, y_min, x_max, y_max = _wgs84_bounds(bbox)
+
+    v_step = math.sqrt(3) * side
+    h_step = 1.5 * side
     h_skip = math.ceil(x_min / h_step) - 1
     h_start = h_skip * h_step
     v_skip = math.ceil(y_min / v_step) - 1
@@ -107,263 +207,261 @@ def create_gridhexagonal(bbox, resolution):
         v_start_array = [v_start + (v_step / 2.0), v_start]
     else:
         v_start_array = [v_start - (v_step / 2.0), v_start]
+
+    hexagons = []
     v_start_idx = int(abs(h_skip) % 2)
     c_x = h_start
-    c_y = v_start_array[v_start_idx]
-    v_start_idx = (v_start_idx + 1) % 2
     while c_x < h_end:
+        c_y = v_start_array[v_start_idx]
         while c_y < v_end:
-            grid.append(create_hexagon(resolution, c_x, c_y))
+            hexagons.append(create_hexagon(side, c_x, c_y))
             c_y += v_step
         c_x += h_step
-        c_y = v_start_array[v_start_idx]
         v_start_idx = (v_start_idx + 1) % 2
-    grid = gpd.GeoDataFrame(geometry=grid).reset_index()
-    grid.crs = {'init': 'epsg:4326'}
-    grid = grid.rename(columns={'index':'places'}).set_index('places')
-    if isinstance(bbox, gpd.GeoDataFrame):
-        grid = gpd.sjoin(grid, bbox, op='intersects')[grid.columns].drop_duplicates()
-        grid = grid.to_crs(bbox.crs)
-    grid['lon'] = grid['geometry'].centroid.x
-    grid['lat'] = grid['geometry'].centroid.y
+
+    grid = gpd.GeoDataFrame(geometry=hexagons, crs=WGS84).to_crs(bbox.crs)
+    grid = _clip_to_bbox(grid, bbox)
+    grid = _add_centroid_lonlat(grid)
+    grid.index.name = 'places'
     return grid
 
 
-def create_gridsquares(city_shape, resolution=1):
-    """It constructs a grid of square cells.
-
-    Parameters
-    ----------
-    city_shape : GeoDataFrame.
-        Corresponds to the boundary geometry in which the grid will be formed.
-
-    resolution : float, default is 1.
-        Space between the square cells.
+def create_gridsquares(bbox, resolution=1):
     """
-    x0 = city_shape.bounds.min().values[0]
-    xf = city_shape.bounds.max().values[2]
-    y0 = city_shape.bounds.min().values[1]
-    yf = city_shape.bounds.max().values[3]
-    n_y = int((yf-y0)/(resolution/110.57))
-    n_x = int((xf-x0)/(resolution/111.32))
-    grid = {}
-    c = 0
-    for i in range(n_x):
-        for j in range(n_y):
-            grid[c] = {'geometry':Polygon([[x0,y0],
-                            [x0+(resolution/111.32),y0],
-                            [x0+(resolution/111.32),y0+(resolution/110.57)],
-                            [x0,y0+(resolution/110.57)]])}
-            c += 1
-            y0 += resolution/110.57
-        y0 = city_shape.bounds.min().values[1]
-        x0 += resolution/111.32
-    grid = pd.DataFrame(grid).transpose()
-    grid = gpd.GeoDataFrame(grid)
-    grid.crs = {'init': 'epsg:4326'}
-    grid = grid.to_crs(city_shape.crs)
-    grid = gpd.sjoin(grid, city_shape, op='intersects')[grid.columns]
-    grid['lat'] = grid.centroid.y
-    grid['lon'] = grid.centroid.x
+    Create a grid of square cells covering a study area.
+
+    Args:
+        bbox (GeoDataFrame): Study area (any CRS, must be set).
+        resolution (float): Side of each square, in kilometers.
+
+    Returns:
+        GeoDataFrame: Squares intersecting ``bbox`` with ``geometry``,
+        ``lon`` and ``lat`` (centroid) columns and an index named ``places``.
+    """
+    if resolution <= 0:
+        raise ValueError('resolution must be a positive number of kilometers.')
+    _check_bbox(bbox)
+    logger.debug('Creating square grid with resolution %s km', resolution)
+
+    x0, y0, xf, yf = _wgs84_bounds(bbox)
+    dx = resolution / KM_PER_DEG_LON
+    dy = resolution / KM_PER_DEG_LAT
+    xs = np.arange(x0, xf, dx)
+    ys = np.arange(y0, yf, dy)
+    squares = [Polygon([(x, y), (x + dx, y), (x + dx, y + dy), (x, y + dy)])
+               for x in xs for y in ys]
+    grid = gpd.GeoDataFrame(geometry=squares, crs=WGS84).to_crs(bbox.crs)
+    grid = _clip_to_bbox(grid, bbox)
+    grid = _add_centroid_lonlat(grid)
     grid.index.name = 'places'
-    return grid[~grid.index.duplicated()]
+    return grid
 
 
-class QuadratCount(BaseEstimator, TransformerMixin):
-
-    def __init__(self, tfreq, grid, filter_place_ratio=0.9):
-        self._tfreq = tfreq
-        self._grid = grid
-        self._filter_place_ratio = filter_place_ratio # pct of timestamps with at least one crime
-
-    def fit(self, x=None, y=None):
-        return self
-
-    def transform(self, data_points):
-        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
-                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
-                    .size().unstack(fill_value=0).stack()
-        stseries.index.names = ['t', 'places']
-        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
-        n_timestamps = len(stseries.index.get_level_values('t').unique())
-        c_places = c_places.loc[c_places < self._filter_place_ratio * n_timestamps].index
-        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
-        self._grid = self._grid.loc[c_places]
-        return stseries
-
-
-class QuadratCount2(BaseEstimator, TransformerMixin):
-
-    def __init__(self, tfreq, grid, filter_place_ratio=0.9):
-        self._tfreq = tfreq
-        self._grid = grid
-        self._filter_place_ratio = filter_place_ratio # pct of timestamps with at least one crime
-
-
-    def transform(self, data_points):
-        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
-                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
-                    .size().unstack(fill_value=0).stack()
-        stseries.index.names = ['t', 'places']
-        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
-        n_timestamps = len(stseries.index.get_level_values('t').unique())
-        c_places = c_places.loc[c_places < self._filter_place_ratio * n_timestamps].index
-        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
-        self._grid = self._grid.loc[c_places]
-        return stseries
-
-
-class KGrid:
-
-    def __init__(self, k, tfreq):
-        self._K = k
-        self._tfreq = tfreq
-
-    def fit(self, data_points):
-        self.km = KMeans(self._K).fit(data_points[['lat','lon']])
-        crime_data = data_points.copy(deep=True)
-        crime_data['K'] = self.km.labels_
-        self._grid = gpd.GeoDataFrame(
-            geometry=crime_data.groupby('K')\
-                .apply(lambda x: MultiPoint(list(x['geometry'])).convex_hull))
-        self._grid.crs = {'init': 'epsg:4326'}
-        self._grid = self._grid.to_crs(crime_data.crs)
-        crimes_per_cell = gpd.sjoin(crime_data, self._grid)\
-                             .groupby('index_right').size()
-        self._grid = self._grid.loc[crimes_per_cell > crimes_per_cell.mean()]
-        return self
-
-    def transform(self, data_points):
-        stseries = gpd.sjoin(data_points, self._grid).set_index('t')\
-                    .groupby([pd.Grouper(freq=self._tfreq), 'index_right'])\
-                    .size().unstack(fill_value=0).stack()
-        stseries.index.names = ['t', 'places']
-        c_places = stseries.groupby(['places']).agg(lambda x: x.eq(0).sum())
-        n_timestamps = len(stseries.index.get_level_values('t').unique())
-        c_places = c_places.loc[c_places < 0.9 * n_timestamps].index
-        stseries = stseries.loc[pd.IndexSlice[:, c_places]]
-        self._grid = self._grid.loc[c_places]
-        return stseries
-
-
-class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator): # y
+class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator):
     """
     Abstract base class for spatio-temporal crime mapping.
 
+    Subclasses implement :meth:`fit_grid`, which maps the events of a single
+    time period onto the grid. :meth:`transform` takes care of splitting the
+    events into periods, filling periods with no events and assembling the
+    result into a series indexed by ``(t, places)``.
+
     Args:
-        tfreq (str): Time frequency ('M' for monthly, 'W' for weekly, 'D' for daily)
-        grid (GeoDataFrame): Spatial grid for analysis
-        start_time (str or datetime, optional): Analysis start time
-        end_time (str or datetime, optional): Analysis end time
+        tfreq (str): Time frequency: ``'M'`` (monthly), ``'W'`` (weekly) or
+            ``'D'`` (daily).
+        grid (GeoDataFrame): Spatial grid with ``geometry``, ``lon`` and
+            ``lat`` columns, as produced by the ``create_grid*`` functions.
+        start_time (str or datetime, optional): Force the series to start at
+            this time (periods without events are filled with zeros).
+        end_time (str or datetime, optional): Force the series to end at this
+            time.
     """
 
-    def __init__(self, tfreq, grid, start_time=False, end_time=False, debug=False):
-        self.debug = debug
-        if self.debug:
-            print(f"Initializing SpatioTemporalMapping with frequency: {tfreq}", flush=True)
-        assert tfreq.upper() in ['M', 'W', 'D'], \
-            "Invalid tfreq. Please choose (m)onthly, (w)eekly or (d)aily."
-        assert all([x in grid.columns for x in ['geometry', 'lon', 'lat']]), \
-            "Input grid must have `geometry`, `lon` and `lat` columns."
-        self._tfreq = tfreq.upper()
+    def __init__(self, tfreq, grid, start_time=None, end_time=None):
+        self.tfreq = tfreq
+        self.grid = grid
+        self.start_time = start_time
+        self.end_time = end_time
+
+        self._tfreq = normalize_tfreq(tfreq)
+        missing = [c for c in ('geometry', 'lon', 'lat') if c not in grid.columns]
+        if missing:
+            raise ValueError(
+                f'Input grid must have `geometry`, `lon` and `lat` columns; missing {missing}.')
         self._grid = grid
-        self._start_time = pd.to_datetime(start_time) if start_time else False
-        self._end_time = pd.to_datetime(end_time) if end_time else False
+        self._start_time = pd.to_datetime(start_time) if start_time else None
+        self._end_time = pd.to_datetime(end_time) if end_time else None
+        logger.debug('%s initialised with tfreq=%s and %d places',
+                     type(self).__name__, self._tfreq, len(grid))
 
     @abstractmethod
-    def fit_grid(self, data_points=None):
-        pass
+    def fit_grid(self, data_points):
+        """
+        Map the events of one time period onto the grid.
 
-    def get_time_data_chunks(self, data_points):
-        chunks = data_points.set_index('t').resample(self._tfreq)
-        chunks = pd.DataFrame(chunks,
-                              columns=['t', 'crime_chunks'])
-        chunks = chunks.set_index('t').sort_values('t')
-        return chunks.apply(lambda x: x[0], axis=1)
+        Args:
+            data_points (GeoDataFrame): Events of a single period.
 
-    def get_times_no_data(self, chunks):
-        if not self._start_time:
-            self._start_time = chunks.index.min()
-        if not self._end_time:
-            self._end_time = chunks.index.max()
-        times_between = pd.date_range(self._start_time, self._end_time, freq=self._tfreq)
-        no_data = {cell:0 for cell in self._grid.index}
-        times_no_data = set(times_between) - set(chunks.index)
-        if len(times_no_data) == 0:
-            return chunks
-        times_no_data = pd.DataFrame(index=times_no_data)
-        times_no_data['crime_density'] = [no_data] * len(times_no_data)
-        return times_no_data
+        Returns:
+            dict: ``{place: value}`` for every place of the grid.
+        """
 
-    def fit(self, x, y=None):
+    def fit(self, x=None, y=None):
+        """No-op; present for scikit-learn compatibility."""
         return self
 
+    def _time_index(self, chunk_labels):
+        """Full time index, extended to ``start_time``/``end_time`` if given."""
+        start = self._start_time if self._start_time is not None else chunk_labels.min()
+        end = self._end_time if self._end_time is not None else chunk_labels.max()
+        full = pd.date_range(start, end, freq=self._tfreq)
+        return full.union(chunk_labels[(chunk_labels >= start) & (chunk_labels <= end)])
+
     def transform(self, data_points):
-        chunks = self.get_time_data_chunks(data_points)
-        stseries = chunks.apply(self.fit_grid).to_frame('crime_density')
-        times_no_data = self.get_times_no_data(chunks)
-        if len(times_no_data) != len(chunks):
-            stseries = stseries.append(times_no_data)
-        time_ix = stseries.index
-        stseries = pd.json_normalize(data=stseries['crime_density'])
-        stseries.index = time_ix
-        stseries = stseries.unstack()
-        stseries.index.names = ['places','t']
-        stseries = stseries.swaplevel().sort_index()
-        return stseries
+        """
+        Build the spatio-temporal series from crime events.
+
+        Args:
+            data_points (GeoDataFrame): Events with a ``t`` timestamp column
+                and point geometries (e.g. ``Dataset.crimes``).
+
+        Returns:
+            pandas.Series: Values named ``crime_density`` indexed by
+            ``(t, places)``, sorted.
+        """
+        if 't' not in data_points.columns:
+            raise ValueError('data_points must have a `t` timestamp column.')
+        events = data_points.set_index(pd.DatetimeIndex(data_points['t'])).sort_index()
+        chunks = {label: chunk for label, chunk in events.resample(self._tfreq)}
+        labels = pd.DatetimeIndex(list(chunks.keys()))
+        time_index = self._time_index(labels)
+        logger.debug('Mapping %d events over %d periods', len(events), len(time_index))
+
+        zeros = dict.fromkeys(self._grid.index, 0.0)
+        rows = []
+        for t in time_index:
+            chunk = chunks.get(t)
+            if chunk is None or len(chunk) == 0:
+                rows.append(zeros)
+            else:
+                rows.append(self.fit_grid(chunk))
+        frame = pd.DataFrame(rows, index=time_index)
+        frame = frame.reindex(columns=self._grid.index)
+        stseries = frame.stack()
+        stseries.index.names = ['t', 'places']
+        stseries.name = 'crime_density'
+        return stseries.sort_index()
 
 
-class KDE(SpatioTemporalMapping): # y
+class KDE(SpatioTemporalMapping):
     """
-    Kernel Density Estimation for crime hotspot detection.
+    Kernel density estimation of crime events evaluated on grid points.
+
+    For every time period a Gaussian KDE is fitted to the event coordinates
+    and evaluated at the grid points (``lon``/``lat`` columns of the grid).
+    Periods with fewer than 3 events get a density of zero everywhere.
 
     Args:
-        tfreq (str): Time frequency ('M' for monthly, 'W' for weekly, 'D' for daily)
-        grid (GeoDataFrame): Spatial grid for analysis
-        start_time (str or datetime, optional): Analysis start time
-        end_time (str or datetime, optional): Analysis end time
-        bandwidth (str or float): Bandwidth method ('silverman' or numeric value)
+        tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
+        grid (GeoDataFrame): Point grid, see :func:`create_gridpoints`.
+        start_time, end_time: See :class:`SpatioTemporalMapping`.
+        bandwidth (str or float): ``'silverman'`` (default) or ``'scott'`` to
+            estimate the bandwidth from the first period with enough events
+            and keep it fixed afterwards (so densities are comparable across
+            time), or a positive number used directly as the KDE factor.
     """
 
-    def __init__(self, tfreq, grid, start_time=False, end_time=False, bandwidth='silverman', debug=False):
+    def __init__(self, tfreq, grid, start_time=None, end_time=None, bandwidth='silverman'):
         super().__init__(tfreq, grid, start_time, end_time)
-        self.debug = debug
-        self._bandwidth = bandwidth
+        self.bandwidth = bandwidth
+        if isinstance(bandwidth, str):
+            method = bandwidth.lower()
+            if method == 'auto':
+                method = 'silverman'
+            if method not in ('silverman', 'scott'):
+                raise ValueError("bandwidth must be 'silverman', 'scott' or a number.")
+            self._bw_method = method
+            self._factor = None
+        else:
+            if bandwidth <= 0:
+                raise ValueError('bandwidth must be a positive number.')
+            self._bw_method = None
+            self._factor = float(bandwidth)
         self._kernel = None
-        
-        if self.debug:
-            print(f"Initializing KDE with bandwidth: {bandwidth}", flush=True)
+
+    @property
+    def factor(self):
+        """float or None: KDE factor in use (``None`` until the first fit)."""
+        return self._factor
 
     def fit_grid(self, data_points, as_df=False):
         """
-        Fit the kernel density estimation to grid points.
+        Fit the KDE to the events of one period and evaluate it on the grid.
 
         Args:
-            data_points (GeoDataFrame): Crime incident points
-            as_df (bool): If True, return results as DataFrame
+            data_points (GeoDataFrame): Events of a single period.
+            as_df (bool): If True return a DataFrame instead of a dict.
 
         Returns:
-            dict or DataFrame: Density estimates for grid points
+            dict or DataFrame: Density at each grid point.
         """
-        if self.debug:
-            print(f"Fitting KDE grid with {len(data_points)} points", flush=True)
-        
         if len(data_points) < 3:
-            crime_density = pd.DataFrame([0]*len(self._grid.index),
-                                         index=self._grid.index,
-                                         columns=['crime_density'])
+            values = np.zeros(len(self._grid))
         else:
-            if isinstance(self._bandwidth, str):
-                self._kernel = gaussian_kde(np.vstack([data_points.centroid.x,
-                                                    data_points.centroid.y]),
-                                            bw_method='silverman')
-                self._bandwidth = self._kernel.factor
-            else:
-                self._kernel = gaussian_kde(np.vstack([data_points.centroid.x,
-                                                       data_points.centroid.y]),
-                                            bw_method=self._bandwidth)
-            crime_density = pd.DataFrame(self._kernel(self._grid[['lon', 'lat']].values.T),
-                                         index=self._grid.index, columns=['crime_density'])
+            xy = np.vstack([data_points.geometry.x.values, data_points.geometry.y.values])
+            bw = self._factor if self._factor is not None else self._bw_method
+            self._kernel = gaussian_kde(xy, bw_method=bw)
+            if self._factor is None:
+                self._factor = float(self._kernel.factor)
+                logger.debug('KDE bandwidth factor estimated with %s: %.5f',
+                             self._bw_method, self._factor)
+            values = self._kernel(self._grid[['lon', 'lat']].values.T)
+        density = pd.DataFrame({'crime_density': values}, index=self._grid.index)
         if as_df:
-            return crime_density
-        return crime_density.to_dict()['crime_density']
+            return density
+        return density['crime_density'].to_dict()
+
+
+class QuadratCount(SpatioTemporalMapping):
+    """
+    Count of crime events per grid cell (quadrat count).
+
+    An alternative to :class:`KDE` that works on polygonal grids (hexagons or
+    squares, see :func:`create_gridhexagonal` and :func:`create_gridsquares`):
+    the value of a cell in a period is the number of events that fall in it.
+
+    Args:
+        tfreq (str): Time frequency (``'M'``, ``'W'`` or ``'D'``).
+        grid (GeoDataFrame): Polygonal grid.
+        start_time, end_time: See :class:`SpatioTemporalMapping`.
+    """
+
+    def __init__(self, tfreq, grid, start_time=None, end_time=None):
+        super().__init__(tfreq, grid, start_time, end_time)
+        if not grid.geom_type.isin(['Polygon', 'MultiPolygon']).all():
+            raise ValueError('QuadratCount requires a polygonal grid '
+                             '(see create_gridhexagonal / create_gridsquares).')
+
+    def fit_grid(self, data_points, as_df=False):
+        """
+        Count the events of one period in each cell of the grid.
+
+        Args:
+            data_points (GeoDataFrame): Events of a single period.
+            as_df (bool): If True return a DataFrame instead of a dict.
+
+        Returns:
+            dict or DataFrame: Number of events per cell.
+        """
+        points = data_points[['geometry']].to_crs(self._grid.crs)
+        joined = gpd.sjoin(points, self._grid[['geometry']], how='inner',
+                           predicate='within')
+        # The right index column is named after the grid index ('places');
+        # fall back to geopandas' default name otherwise.
+        col = 'places' if 'places' in joined.columns else 'index_right'
+        counts = joined.groupby(col).size().reindex(self._grid.index, fill_value=0)
+        density = pd.DataFrame({'crime_density': counts.astype(float).values},
+                               index=self._grid.index)
+        if as_df:
+            return density
+        return density['crime_density'].to_dict()

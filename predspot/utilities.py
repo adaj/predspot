@@ -1,184 +1,120 @@
 """
 Utilities Module
+================
 
-This module provides utility functions and classes for data processing and visualization,
-including contour generation, feature union operations, and pandas-specific transformations.
+Helpers used across Predspot: a :class:`PandasFeatureUnion` that keeps
+DataFrames (and their index) when combining feature transformers, and a
+GeoJSON contour export for density maps.
 """
 
 __author__ = 'Adelson Araujo'
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import logging
+
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from numpy import zeros, linspace, ceil, meshgrid
-from sklearn.pipeline import FeatureUnion, Pipeline, _fit_transform_one, _transform_one
-from joblib import Parallel, delayed
-from scipy import sparse
-import geojsoncontour
+from sklearn.base import BaseEstimator, TransformerMixin
+
+logger = logging.getLogger(__name__)
 
 
-def contour_geojson(y, bbox, resolution, cmin, cmax, debug=False):
+class PandasFeatureUnion(TransformerMixin, BaseEstimator):
     """
-    Generate GeoJSON contours from spatial data.
+    Concatenate the DataFrame outputs of several transformers column-wise.
+
+    Unlike :class:`sklearn.pipeline.FeatureUnion`, the transformers' outputs
+    are aligned on their index and returned as a DataFrame. Rows with missing
+    values after alignment (e.g. warm-up rows of lag features) are dropped.
 
     Args:
-        y (pandas.Series): Values to contour
-        bbox (GeoDataFrame): Bounding box for the contour
-        resolution (float): Spatial resolution in kilometers
-        cmin (float): Minimum contour value
-        cmax (float): Maximum contour value
-        debug (bool, optional): Enable debug printing. Defaults to False
+        transformer_list (list): ``(name, transformer)`` pairs.
+    """
+
+    def __init__(self, transformer_list):
+        self.transformer_list = transformer_list
+
+    def _iter(self):
+        for name, transformer in self.transformer_list:
+            if transformer is None or transformer == 'drop':
+                continue
+            yield name, transformer
+
+    def fit(self, X, y=None, **fit_params):
+        for _, transformer in self._iter():
+            transformer.fit(X, y, **fit_params)
+        return self
+
+    def fit_transform(self, X, y=None, **fit_params):
+        outputs = [transformer.fit_transform(X, y, **fit_params)
+                   for _, transformer in self._iter()]
+        return self.merge_dataframes_by_column(outputs)
+
+    def transform(self, X):
+        outputs = [transformer.transform(X) for _, transformer in self._iter()]
+        return self.merge_dataframes_by_column(outputs)
+
+    @staticmethod
+    def merge_dataframes_by_column(outputs):
+        """
+        Align a list of DataFrames on their index and concatenate columns.
+
+        Args:
+            outputs (list): DataFrames returned by the transformers.
+
+        Returns:
+            pandas.DataFrame: The merged features without missing rows.
+        """
+        if not outputs:
+            raise ValueError('PandasFeatureUnion has no transformers.')
+        logger.debug('Merging %d feature blocks', len(outputs))
+        return pd.concat(outputs, axis='columns').dropna()
+
+
+def contour_geojson(y, bbox, resolution, cmin, cmax):
+    """
+    Export a density surface as filled GeoJSON contours.
+
+    Requires the optional dependency ``geojsoncontour``
+    (``pip install predspot[contour]``).
+
+    Args:
+        y (pandas.Series): Values indexed by the positional index of the
+            full point grid returned by
+            :func:`predspot.crime_mapping.create_gridpoints` (before
+            clipping), i.e. the ``places`` index.
+        bbox (GeoDataFrame): Study area used to build the grid.
+        resolution (float): Grid resolution in kilometers (same as the grid).
+        cmin (float): Lowest contour level.
+        cmax (float): Highest contour level.
 
     Returns:
-        dict: GeoJSON representation of the contours
-
-    Raises:
-        AssertionError: If bbox is not a GeoDataFrame
+        str: GeoJSON string with the contour polygons.
     """
-    if debug:
-        print(f"Generating contours with resolution: {resolution}km", flush=True)
-        
-    assert isinstance(bbox, GeoDataFrame)
-    bounds = bbox.bounds
-    b_s, b_w = bounds.min().values[1], bounds.min().values[0]
-    b_n, b_e = bounds.max().values[3], bounds.max().values[2]
-    
-    # Calculate grid dimensions
-    nlon = int(ceil((b_e-b_w) / (resolution/111.32)))
-    nlat = int(ceil((b_n-b_s) / (resolution/110.57)))
-    
-    if debug:
-        print(f"Grid dimensions: {nlon}x{nlat}", flush=True)
-    
-    # Create meshgrid and initialize values
-    lonv, latv = meshgrid(linspace(b_w, b_e, nlon), linspace(b_s, b_n, nlat))
-    Z = zeros(lonv.shape[0]*lonv.shape[1]) - 999
-    Z[y.index] = y.values
+    try:
+        import geojsoncontour
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError('contour_geojson requires the optional dependency '
+                          '`geojsoncontour`: pip install predspot[contour]') from exc
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    from predspot.crime_mapping import (KM_PER_DEG_LAT, KM_PER_DEG_LON,
+                                        _check_bbox, _wgs84_bounds)
+
+    _check_bbox(bbox)
+    b_w, b_s, b_e, b_n = _wgs84_bounds(bbox)
+    nlon = max(int(np.ceil((b_e - b_w) / (resolution / KM_PER_DEG_LON))), 2)
+    nlat = max(int(np.ceil((b_n - b_s) / (resolution / KM_PER_DEG_LAT))), 2)
+    lonv, latv = np.meshgrid(np.linspace(b_w, b_e, nlon), np.linspace(b_s, b_n, nlat))
+    Z = np.full(lonv.size, -999.0)
+    Z[np.asarray(y.index, dtype=int)] = y.values
     Z = Z.reshape(lonv.shape)
-    
-    # Generate contours
+
     fig, axes = plt.subplots()
-    contourf = axes.contourf(lonv, latv, Z,
-                            levels=linspace(cmin, cmax, 25),
-                            cmap='Spectral_r')
-    
-    if debug:
-        print("Converting contours to GeoJSON", flush=True)
-        
+    contourf = axes.contourf(lonv, latv, Z, levels=np.linspace(cmin, cmax, 25),
+                             cmap='Spectral_r')
     geojson = geojsoncontour.contourf_to_geojson(contourf=contourf, fill_opacity=0.5)
     plt.close(fig)
     return geojson
-
-
-class PandasFeatureUnion(FeatureUnion):
-    """
-    A FeatureUnion transformer that preserves pandas DataFrames.
-    
-    This class extends sklearn's FeatureUnion to work with pandas DataFrames,
-    maintaining index alignment and column names.
-
-    Attributes:
-        n_jobs (int): Number of parallel jobs
-        transformer_list (list): List of transformer tuples
-        transformer_weights (dict): Weights for transformers
-        debug (bool): Enable debug printing
-    """
-
-    def __init__(self, transformer_list, n_jobs=None, transformer_weights=None, debug=False):
-        super().__init__(transformer_list, n_jobs, transformer_weights)
-        self.debug = debug
-        
-        if self.debug:
-            print("Initializing PandasFeatureUnion", flush=True)
-
-    def fit_transform(self, X, y=None, **fit_params):
-        """
-        Fit all transformers and transform the data.
-
-        Args:
-            X (pandas.DataFrame): Input features
-            y (array-like, optional): Target values
-            **fit_params: Additional fitting parameters
-
-        Returns:
-            pandas.DataFrame: Transformed features
-
-        Raises:
-            ValueError: If no transformers are provided
-        """
-        if self.debug:
-            print(f"Fitting and transforming {len(X)} samples", flush=True)
-            
-        self._validate_transformers()
-        result = Parallel(n_jobs=self.n_jobs)(
-            delayed(_fit_transform_one)(
-                transformer=trans,
-                X=X,
-                y=y,
-                weight=weight,
-                **fit_params)
-            for name, trans, weight in self._iter())
-
-        if not result:
-            # All transformers are None
-            return zeros((X.shape[0], 0))
-            
-        Xs, transformers = zip(*result)
-        self._update_transformer_list(transformers)
-        
-        if self.debug:
-            print("Merging transformed features", flush=True)
-            
-        if any(sparse.issparse(f) for f in Xs):
-            Xs = sparse.hstack(Xs).tocsr()
-        else:
-            Xs = self.merge_dataframes_by_column(Xs)
-        return Xs
-
-    def merge_dataframes_by_column(self, Xs):
-        """
-        Merge transformed features into a single DataFrame.
-
-        Args:
-            Xs (list): List of transformed DataFrames
-
-        Returns:
-            pandas.DataFrame: Merged DataFrame
-        """
-        if self.debug:
-            print(f"Merging {len(Xs)} DataFrames", flush=True)
-            
-        return pd.concat(Xs, axis="columns", copy=False).dropna()
-
-    def transform(self, X):
-        """
-        Transform X separately by each transformer.
-
-        Args:
-            X (pandas.DataFrame): Input features
-
-        Returns:
-            pandas.DataFrame: Transformed features
-        """
-        if self.debug:
-            print(f"Transforming features with {len(self.transformer_list)} transformers", flush=True)
-            
-        Xs = Parallel(n_jobs=self.n_jobs)(
-            delayed(_transform_one)(
-                transformer=trans,
-                X=X,
-                y=None,
-                weight=weight)
-            for name, trans, weight in self._iter())
-
-        if not Xs:
-            # All transformers are None
-            return zeros((X.shape[0], 0))
-            
-        if any(sparse.issparse(f) for f in Xs):
-            Xs = sparse.hstack(Xs).tocsr()
-        else:
-            Xs = self.merge_dataframes_by_column(Xs)
-        return Xs
