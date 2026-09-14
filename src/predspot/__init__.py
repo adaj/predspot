@@ -31,7 +31,7 @@ from predspot.ml_modelling import PredictionPipeline
 from predspot.synthetic import generate_crimes
 from predspot.utilities import PandasFeatureUnion
 
-__version__ = "0.2.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "Dataset",

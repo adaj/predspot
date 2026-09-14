@@ -48,6 +48,6 @@ jupyter nbconvert --to notebook --execute --inplace examples/natal.ipynb
 ## Releasing
 
 1. Bump `__version__` in `src/predspot/__init__.py` and update `CHANGELOG.md`.
-2. Merge to `master`, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
+2. Merge to `master`, then tag and push: `git tag -a v1.0.0 -m "Predspot 1.0.0" && git push origin v1.0.0`.
 3. The `Publish to PyPI` workflow builds the distribution and uploads it via
    PyPI trusted publishing.
