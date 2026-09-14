@@ -56,7 +56,7 @@ def test_load_study_area_rejects_points(monkeypatch):
 
 def test_load_study_area_without_osmnx(monkeypatch):
     monkeypatch.setitem(sys.modules, "osmnx", None)
-    with pytest.raises(ImportError, match="predspot\\[osm\\]"):
+    with pytest.raises(ImportError, match="pip install osmnx"):
         load_study_area("Natal, Brazil")
 
 
@@ -82,5 +82,5 @@ def test_get_city_shape_returns_raw_geocode(monkeypatch):
 
 def test_get_city_shape_without_osmnx(monkeypatch):
     monkeypatch.setitem(sys.modules, "osmnx", None)
-    with pytest.raises(ImportError, match="predspot\\[osm\\]"):
+    with pytest.raises(ImportError, match="pip install osmnx"):
         get_city_shape("Natal, RN, Brazil")

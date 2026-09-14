@@ -10,16 +10,17 @@ Optional extras add features that need heavier dependencies:
 
 | Extra | Installs | Enables |
 |-------|----------|---------|
-| `osm` | [osmnx](https://osmnx.readthedocs.io) | [`load_study_area`][predspot.crime_mapping.load_study_area] — study areas from OpenStreetMap |
 | `contour` | [geojsoncontour](https://github.com/bartromgens/geojsoncontour) | [`contour_geojson`][predspot.utilities.contour_geojson] — GeoJSON contour export |
+| `examples` | jupyter, nbconvert, ipykernel | Running the example notebooks |
 | `dev` | pytest, ruff, build, twine | Running the test suite and building the package |
 
 ```bash
-pip install "predspot[osm,contour]"
+pip install "predspot[contour,examples]"
 ```
 
 The core dependencies — pandas, GeoPandas, Shapely, NumPy, SciPy, scikit-learn,
-statsmodels and Matplotlib — are installed automatically.
+statsmodels, Matplotlib and [osmnx](https://osmnx.readthedocs.io) (study areas
+from OpenStreetMap) — are installed automatically.
 
 !!! tip "conda users"
     GeoPandas and its GEOS/PROJ stack install fine from PyPI wheels nowadays,
@@ -31,7 +32,7 @@ statsmodels and Matplotlib — are installed automatically.
 ```bash
 git clone https://github.com/adaj/predspot.git
 cd predspot
-pip install -e ".[dev,osm,contour]"
+pip install -e ".[dev,contour,examples]"
 pytest
 ```
 

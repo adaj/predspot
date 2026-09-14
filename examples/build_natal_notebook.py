@@ -37,7 +37,7 @@ runs anywhere without confidential police data:
 6. forecast the next months and check how well the true hotspots are recovered.
 
 Every intermediate object is displayed so you can see exactly what flows
-between the steps. Requirements: `pip install "predspot[osm]" matplotlib`.
+between the steps. Requirements: `pip install predspot jupyter` (or `pip install "predspot[examples]"`).
 """)
 
 code("""

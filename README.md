@@ -36,8 +36,14 @@ Install from PyPI (Python 3.10 or newer):
 
 ```bash
 pip install predspot              # core
-pip install "predspot[osm]"       # + study areas from OpenStreetMap (osmnx)
 pip install "predspot[contour]"   # + GeoJSON contour export (geojsoncontour)
+pip install "predspot[examples]"  # + jupyter, to run the example notebooks
+```
+
+Not on PyPI yet? Install straight from GitHub:
+
+```bash
+pip install "git+https://github.com/adaj/predspot.git"
 ```
 
 Basic usage example:
@@ -81,7 +87,7 @@ mapping = QuadratCount(tfreq='W', grid=create_gridhexagonal(study_area_gdf, reso
 ### Study area from OpenStreetMap and synthetic data
 
 You do not need real data to try Predspot. Fetch a city boundary from
-OpenStreetMap (`pip install "predspot[osm]"`) and generate synthetic events
+OpenStreetMap and generate synthetic events
 with spatial hotspots and realistic temporal patterns (trend, annual cycle,
 day-of-week and hour-of-day profiles):
 
@@ -276,7 +282,7 @@ From source, for development:
 ```bash
 git clone https://github.com/adaj/predspot.git
 cd predspot
-pip install -e ".[dev,osm,contour]"
+pip install -e ".[dev,contour,examples]"
 ruff check src tests   # lint
 pytest                 # ~10 s
 ```

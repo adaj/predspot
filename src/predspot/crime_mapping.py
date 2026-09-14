@@ -94,8 +94,7 @@ def load_study_area(place, crs=WGS84, which_result=None):
     """
     Fetch the boundary polygon of a place from OpenStreetMap.
 
-    Uses `osmnx <https://osmnx.readthedocs.io>`_ (optional dependency:
-    ``pip install predspot[osm]``) to geocode ``place`` with Nominatim and
+    Uses `osmnx <https://osmnx.readthedocs.io>`_ to geocode ``place`` with Nominatim and
     return its administrative boundary, ready to be used as the
     ``study_area`` of [`Dataset`][predspot.Dataset] or as the ``bbox`` of the
     ``create_grid*`` functions.
@@ -122,7 +121,7 @@ def load_study_area(place, crs=WGS84, which_result=None):
         import osmnx as ox
     except ImportError as exc:
         raise ImportError(
-            "load_study_area requires the optional dependency `osmnx`: pip install predspot[osm]"
+            "load_study_area requires `osmnx` (installed with predspot): pip install osmnx"
         ) from exc
     logger.debug("Geocoding study area %r with osmnx", place)
     gdf = ox.geocode_to_gdf(place, which_result=which_result)
@@ -145,7 +144,7 @@ def get_city_shape(place_query):
     A thin wrapper around ``osmnx.geocode_to_gdf`` that returns the raw
     Nominatim result. Prefer [`load_study_area`][predspot.crime_mapping.load_study_area]
     when you want the result validated (polygon geometry, tidy columns).
-    Requires the optional ``osmnx`` dependency (``pip install predspot[osm]``).
+    Uses ``osmnx``, installed with Predspot.
 
     Args:
         place_query (str): Name of the place, in a format Nominatim accepts,
@@ -163,7 +162,7 @@ def get_city_shape(place_query):
         import osmnx as ox
     except ImportError as exc:
         raise ImportError(
-            "get_city_shape requires the optional dependency `osmnx`: pip install predspot[osm]"
+            "get_city_shape requires `osmnx` (installed with predspot): pip install osmnx"
         ) from exc
     return ox.geocode_to_gdf(place_query)
 
