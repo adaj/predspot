@@ -138,6 +138,36 @@ def load_study_area(place, crs=WGS84, which_result=None):
     return gdf.to_crs(crs)
 
 
+def get_city_shape(place_query):
+    """
+    Fetch the shape (polygon) of a city or region from OpenStreetMap.
+
+    A thin wrapper around ``osmnx.geocode_to_gdf`` that returns the raw
+    Nominatim result. Prefer [`load_study_area`][predspot.crime_mapping.load_study_area]
+    when you want the result validated (polygon geometry, tidy columns).
+    Requires the optional ``osmnx`` dependency (``pip install predspot[osm]``).
+
+    Args:
+        place_query (str): Name of the place, in a format Nominatim accepts,
+            e.g. ``"Natal, RN, Brazil"`` or ``"Rio Grande do Norte, Brazil"``.
+
+    Returns:
+        GeoDataFrame: One row (or more, if the query is ambiguous) with the
+        place geometry (Polygon/MultiPolygon) in WGS84.
+
+    Example:
+        >>> city = get_city_shape("Natal, RN, Brazil")
+        >>> city.geometry.iloc[0]  # shapely Polygon/MultiPolygon
+    """
+    try:
+        import osmnx as ox
+    except ImportError as exc:
+        raise ImportError(
+            "get_city_shape requires the optional dependency `osmnx`: pip install predspot[osm]"
+        ) from exc
+    return ox.geocode_to_gdf(place_query)
+
+
 def _check_bbox(bbox):
     if not isinstance(bbox, gpd.GeoDataFrame):
         raise TypeError("bbox must be a geopandas GeoDataFrame.")

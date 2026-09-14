@@ -12,6 +12,14 @@ Revival release: the code base now targets Python 3.10+ with current
 versions of pandas (>= 2.2), GeoPandas (>= 1.0), scikit-learn and statsmodels.
 
 ### Added
+- `crime_mapping.get_city_shape("Natal, RN, Brazil")` — thin wrapper around
+  `osmnx.geocode_to_gdf` returning the raw city shape.
+- `examples/natal.ipynb`: an executed end-to-end walkthrough on Natal with
+  synthetic data, also rendered in the documentation.
+- `PredictionPipeline.evaluate` accepts a list of scorings and returns a
+  DataFrame (one CV pass for all metrics).
+- README section explaining the framework (thesis, Chapter 3, Figures 7-12);
+  the README is now the documentation home page.
 - `crime_mapping.load_study_area("City, Country")` fetches a study area
   boundary from OpenStreetMap via `osmnx` (`pip install predspot[osm]`).
 - `synthetic.generate_crimes` generates synthetic events inside any study

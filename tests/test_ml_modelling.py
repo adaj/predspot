@@ -73,8 +73,12 @@ def test_evaluate(dataset, study_area):
     assert len(scores) == 3
     mse = pipe.evaluate("mse", cv=3)
     assert all(s >= 0 for s in mse)
+    both = pipe.evaluate(["r2", "mse"], cv=3)
+    assert list(both.columns) == ["r2", "mse"] and len(both) == 3
     with pytest.raises(ValueError):
         pipe.evaluate("mae")
+    with pytest.raises(ValueError):
+        pipe.evaluate([])
     with pytest.raises(ValueError):
         pipe.evaluate("r2", cv=100)
     # evaluate refits on the full data: predictions still work afterwards

@@ -32,7 +32,7 @@ estimator sees them as independent samples.
 ## Evaluating
 
 ```python
-pipeline.evaluate("r2", cv=5)    # or "mse"
+pipeline.evaluate("r2", cv=5)            # or "mse", or ["r2", "mse"] for a DataFrame
 ```
 
 Periods are ordered and split with scikit-learn's `TimeSeriesSplit`, so each

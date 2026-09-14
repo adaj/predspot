@@ -23,6 +23,7 @@ from predspot.crime_mapping import (
     create_gridhexagonal,
     create_gridpoints,
     create_gridsquares,
+    get_city_shape,
     load_study_area,
 )
 from predspot.dataset_preparation import Dataset
@@ -42,6 +43,7 @@ __all__ = [
     "create_gridhexagonal",
     "create_gridsquares",
     "load_study_area",
+    "get_city_shape",
     "generate_crimes",
     "synthetic",
     "crime_mapping",

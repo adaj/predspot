@@ -48,6 +48,8 @@ nav:
       - Grids and spatio-temporal mapping: guide/mapping.md
       - Feature engineering: guide/features.md
       - Prediction and evaluation: guide/modelling.md
+  - Examples:
+      - Natal, Brazil (end to end): examples/natal.ipynb
   - API reference:
       - predspot: api/predspot.md
       - dataset_preparation: api/dataset_preparation.md
@@ -62,8 +64,15 @@ nav:
       - Contributing: contributing.md
       - Citing Predspot: citing.md
 
+hooks:
+  - docs/hooks/readme.py
+
 plugins:
   - search
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      include_requirejs: true
   - autorefs
   - mkdocstrings:
       handlers:

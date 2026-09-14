@@ -227,16 +227,19 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         refitted on the original data afterwards.
 
         Args:
-            scoring (str): ``'r2'`` or ``'mse'``.
+            scoring (str or list): ``'r2'``, ``'mse'`` or a list of them.
             cv (int): Number of folds (must be lower than the number of periods).
 
         Returns:
-            list: One score per fold.
+            list or pandas.DataFrame: One score per fold; with a list of
+            scorings, a DataFrame with one column per scoring and one row
+            per fold.
         """
         self._check_fitted()
-        if scoring not in SCORERS:
+        scorings = [scoring] if isinstance(scoring, str) else list(scoring)
+        unknown = [s for s in scorings if s not in SCORERS]
+        if unknown or not scorings:
             raise ValueError('invalid scoring. Try "r2" or "mse".')
-        scorer = SCORERS[scoring]
         timestamps = (
             self._X.index.get_level_values("t")
             .unique()
@@ -245,7 +248,7 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         )
         if not isinstance(cv, int) or cv >= len(timestamps):
             raise ValueError("cv must be an integer lower than the number of periods.")
-        scores = []
+        scores = {name: [] for name in scorings}
         for train_t, test_t in TimeSeriesSplit(cv).split(timestamps):
             X_train = self._X.loc[idx[timestamps[train_t], :], :].sample(
                 frac=1, random_state=self.random_state
@@ -255,7 +258,10 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
             y_test = self._stseries.loc[X_test.index]
             self.estimator.fit(X_train, y_train)
             y_pred = self.estimator.predict(X_test)
-            scores.append(scorer(y_test, y_pred))
-        logger.debug("%s-fold CV %s scores: %s", cv, scoring, scores)
+            for name in scorings:
+                scores[name].append(SCORERS[name](y_test, y_pred))
+        logger.debug("%s-fold CV scores: %s", cv, scores)
         self.fit(self._dataset)  # back to normal
-        return scores
+        if isinstance(scoring, str):
+            return scores[scoring]
+        return pd.DataFrame(scores, index=[f"fold {i + 1}" for i in range(cv)])

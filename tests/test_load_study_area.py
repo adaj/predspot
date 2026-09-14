@@ -6,7 +6,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, box
 
-from predspot.crime_mapping import load_study_area
+from predspot.crime_mapping import get_city_shape, load_study_area
 
 
 def _fake_osmnx(monkeypatch, geometry):
@@ -70,3 +70,17 @@ def test_load_study_area_network():
     assert len(area) == 1
     assert area.geometry.iloc[0].geom_type in ("Polygon", "MultiPolygon")
     assert area.geometry.iloc[0].contains(Point(-35.2094, -5.7945))  # city centre
+
+
+def test_get_city_shape_returns_raw_geocode(monkeypatch):
+    calls = _fake_osmnx(monkeypatch, box(-35.3, -5.9, -35.2, -5.8))
+    city = get_city_shape("Natal, RN, Brazil")
+    assert calls["query"] == "Natal, RN, Brazil"
+    assert city.geometry.iloc[0].geom_type == "Polygon"
+    assert "place_rank" in city.columns  # raw Nominatim columns are kept
+
+
+def test_get_city_shape_without_osmnx(monkeypatch):
+    monkeypatch.setitem(sys.modules, "osmnx", None)
+    with pytest.raises(ImportError, match="predspot\\[osm\\]"):
+        get_city_shape("Natal, RN, Brazil")
