@@ -7,13 +7,12 @@ DataFrames (and their index) when combining feature transformers, and a
 GeoJSON contour export for density maps.
 """
 
-__author__ = 'Adelson Araujo'
+__author__ = "Adelson Araujo"
 
 import logging
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
 from sklearn.base import BaseEstimator, TransformerMixin
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ class PandasFeatureUnion(TransformerMixin, BaseEstimator):
 
     def _iter(self):
         for name, transformer in self.transformer_list:
-            if transformer is None or transformer == 'drop':
+            if transformer is None or transformer == "drop":
                 continue
             yield name, transformer
 
@@ -46,8 +45,7 @@ class PandasFeatureUnion(TransformerMixin, BaseEstimator):
         return self
 
     def fit_transform(self, X, y=None, **fit_params):
-        outputs = [transformer.fit_transform(X, y, **fit_params)
-                   for _, transformer in self._iter()]
+        outputs = [transformer.fit_transform(X, y, **fit_params) for _, transformer in self._iter()]
         return self.merge_dataframes_by_column(outputs)
 
     def transform(self, X):
@@ -66,9 +64,9 @@ class PandasFeatureUnion(TransformerMixin, BaseEstimator):
             pandas.DataFrame: The merged features without missing rows.
         """
         if not outputs:
-            raise ValueError('PandasFeatureUnion has no transformers.')
-        logger.debug('Merging %d feature blocks', len(outputs))
-        return pd.concat(outputs, axis='columns').dropna()
+            raise ValueError("PandasFeatureUnion has no transformers.")
+        logger.debug("Merging %d feature blocks", len(outputs))
+        return pd.concat(outputs, axis="columns").dropna()
 
 
 def contour_geojson(y, bbox, resolution, cmin, cmax):
@@ -94,14 +92,16 @@ def contour_geojson(y, bbox, resolution, cmin, cmax):
     try:
         import geojsoncontour
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise ImportError('contour_geojson requires the optional dependency '
-                          '`geojsoncontour`: pip install predspot[contour]') from exc
+        raise ImportError(
+            "contour_geojson requires the optional dependency "
+            "`geojsoncontour`: pip install predspot[contour]"
+        ) from exc
     import matplotlib
-    matplotlib.use('Agg')
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from predspot.crime_mapping import (KM_PER_DEG_LAT, KM_PER_DEG_LON,
-                                        _check_bbox, _wgs84_bounds)
+    from predspot.crime_mapping import KM_PER_DEG_LAT, KM_PER_DEG_LON, _check_bbox, _wgs84_bounds
 
     _check_bbox(bbox)
     b_w, b_s, b_e, b_n = _wgs84_bounds(bbox)
@@ -113,8 +113,7 @@ def contour_geojson(y, bbox, resolution, cmin, cmax):
     Z = Z.reshape(lonv.shape)
 
     fig, axes = plt.subplots()
-    contourf = axes.contourf(lonv, latv, Z, levels=np.linspace(cmin, cmax, 25),
-                             cmap='Spectral_r')
+    contourf = axes.contourf(lonv, latv, Z, levels=np.linspace(cmin, cmax, 25), cmap="Spectral_r")
     geojson = geojsoncontour.contourf_to_geojson(contourf=contourf, fill_opacity=0.5)
     plt.close(fig)
     return geojson

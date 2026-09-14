@@ -1,5 +1,10 @@
 # Predspot
 
+[![CI](https://github.com/adaj/predspot/actions/workflows/ci.yml/badge.svg)](https://github.com/adaj/predspot/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/predspot.svg)](https://pypi.org/project/predspot/)
+[![Python](https://img.shields.io/pypi/pyversions/predspot.svg)](https://pypi.org/project/predspot/)
+[![License: BSD-3](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+
 ## Overview 📖
 
 Predspot is a Python library for spatio-temporal crime prediction and hotspot detection. It combines machine learning techniques with spatial analysis to help predict and visualize crime patterns across time and space.
@@ -90,21 +95,30 @@ Predspot has four main modules:
 Predspot requires Python 3.10 or newer.
 
 ```bash
+pip install predspot              # from PyPI
+pip install "predspot[contour]"   # + GeoJSON contour export (geojsoncontour)
+```
+
+From source, for development:
+
+```bash
 git clone https://github.com/adaj/predspot.git
 cd predspot
-pip install .
+pip install -e ".[dev,contour]"
 ```
 
 Core dependencies (installed automatically): pandas, geopandas, shapely,
-numpy, scipy, scikit-learn, statsmodels and matplotlib. The optional
-`geojsoncontour` package enables `predspot.utilities.contour_geojson`.
+numpy, scipy, scikit-learn, statsmodels and matplotlib.
 
 ### Tests 🧪
 
 ```bash
-pip install pytest
-pytest
+ruff check src tests   # lint
+pytest                 # ~10 s
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the release process and
+[CHANGELOG.md](CHANGELOG.md) for what changed between versions.
 
 ### Input Data Format 📊
 

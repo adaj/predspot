@@ -11,7 +11,7 @@ Example:
     >>> predictions, pipeline = run_prediction_pipeline(crimes, study_area, grid_resolution=1)
 """
 
-__author__ = 'Adelson Araujo'
+__author__ = "Adelson Araujo"
 
 import logging
 
@@ -50,24 +50,31 @@ def generate_testdata(n_points, start_time, end_time, bounds=DEFAULT_BOUNDS, see
     """
     rng = np.random.default_rng(seed)
     west, south, east, north = bounds
-    study_area = gpd.GeoDataFrame({'name': ['study_area']},
-                                  geometry=[box(west, south, east, north)], crs='EPSG:4326')
+    study_area = gpd.GeoDataFrame(
+        {"name": ["study_area"]}, geometry=[box(west, south, east, north)], crs="EPSG:4326"
+    )
     start, end = pd.Timestamp(start_time), pd.Timestamp(end_time)
     seconds = rng.integers(0, int((end - start).total_seconds()), n_points)
-    tags = rng.choice(['burglary', 'assault', 'drugs', 'homicide'], size=n_points,
-                      p=np.array([1000, 100, 10, 1]) / 1111)
-    crimes = pd.DataFrame({
-        'tag': tags,
-        't': start + pd.to_timedelta(seconds, unit='s'),
-        'lon': rng.uniform(west, east, n_points),
-        'lat': rng.uniform(south, north, n_points),
-    })
-    logger.debug('Generated %d synthetic events', n_points)
+    tags = rng.choice(
+        ["burglary", "assault", "drugs", "homicide"],
+        size=n_points,
+        p=np.array([1000, 100, 10, 1]) / 1111,
+    )
+    crimes = pd.DataFrame(
+        {
+            "tag": tags,
+            "t": start + pd.to_timedelta(seconds, unit="s"),
+            "lon": rng.uniform(west, east, n_points),
+            "lat": rng.uniform(south, north, n_points),
+        }
+    )
+    logger.debug("Generated %d synthetic events", n_points)
     return crimes, study_area
 
 
-def build_default_pipeline(study_area, tfreq='M', grid_resolution=1, lags=2,
-                           bandwidth='silverman', random_state=None):
+def build_default_pipeline(
+    study_area, tfreq="M", grid_resolution=1, lags=2, bandwidth="silverman", random_state=None
+):
     """
     Build the default Predspot pipeline: KDE mapping, seasonal/trend/diff
     features, quantile scaling, RFE feature selection and a random forest.
@@ -86,25 +93,49 @@ def build_default_pipeline(study_area, tfreq='M', grid_resolution=1, lags=2,
     grid = crime_mapping.create_gridpoints(study_area, grid_resolution)
     return ml_modelling.PredictionPipeline(
         mapping=crime_mapping.KDE(tfreq=tfreq, grid=grid, bandwidth=bandwidth),
-        fextraction=PandasFeatureUnion([
-            ('seasonal', feature_engineering.Seasonality(lags=lags, tfreq=tfreq)),
-            ('trend', feature_engineering.Trend(lags=lags, tfreq=tfreq)),
-            ('diff', feature_engineering.Diff(lags=lags, tfreq=tfreq)),
-        ]),
-        estimator=Pipeline([
-            ('f_scaling', feature_engineering.FeatureScaling(
-                QuantileTransformer(n_quantiles=10, output_distribution='uniform'))),
-            ('f_selection', ml_modelling.FeatureSelection(
-                RFE(RandomForestRegressor(n_estimators=20, random_state=random_state)))),
-            ('model', ml_modelling.Model(
-                RandomForestRegressor(n_estimators=50, random_state=random_state))),
-        ]),
+        fextraction=PandasFeatureUnion(
+            [
+                ("seasonal", feature_engineering.Seasonality(lags=lags, tfreq=tfreq)),
+                ("trend", feature_engineering.Trend(lags=lags, tfreq=tfreq)),
+                ("diff", feature_engineering.Diff(lags=lags, tfreq=tfreq)),
+            ]
+        ),
+        estimator=Pipeline(
+            [
+                (
+                    "f_scaling",
+                    feature_engineering.FeatureScaling(
+                        QuantileTransformer(n_quantiles=10, output_distribution="uniform")
+                    ),
+                ),
+                (
+                    "f_selection",
+                    ml_modelling.FeatureSelection(
+                        RFE(RandomForestRegressor(n_estimators=20, random_state=random_state))
+                    ),
+                ),
+                (
+                    "model",
+                    ml_modelling.Model(
+                        RandomForestRegressor(n_estimators=50, random_state=random_state)
+                    ),
+                ),
+            ]
+        ),
         random_state=random_state,
     )
 
 
-def run_prediction_pipeline(crime_data, study_area, crime_tags=None, time_range=None,
-                            tfreq='M', grid_resolution=1, lags=2, random_state=None):
+def run_prediction_pipeline(
+    crime_data,
+    study_area,
+    crime_tags=None,
+    time_range=None,
+    tfreq="M",
+    grid_resolution=1,
+    lags=2,
+    random_state=None,
+):
     """
     Fit the default pipeline on crime data and forecast the next period.
 
@@ -123,24 +154,29 @@ def run_prediction_pipeline(crime_data, study_area, crime_tags=None, time_range=
         tuple: ``(predictions, pipeline)`` — the forecast for the next period
         and the fitted :class:`predspot.ml_modelling.PredictionPipeline`.
     """
-    missing = [c for c in ('tag', 't', 'lat', 'lon') if c not in crime_data.columns]
+    missing = [c for c in ("tag", "t", "lat", "lon") if c not in crime_data.columns]
     if missing:
-        raise ValueError(f'Crime data must contain columns tag, t, lat, lon; missing {missing}')
+        raise ValueError(f"Crime data must contain columns tag, t, lat, lon; missing {missing}")
     if crime_tags:
-        crime_data = crime_data.loc[crime_data['tag'].isin(crime_tags)]
+        crime_data = crime_data.loc[crime_data["tag"].isin(crime_tags)]
     if time_range:
-        time_ix = pd.DatetimeIndex(pd.to_datetime(crime_data['t']))
+        time_ix = pd.DatetimeIndex(pd.to_datetime(crime_data["t"]))
         crime_data = crime_data.iloc[time_ix.indexer_between_time(time_range[0], time_range[1])]
 
     dataset = dataset_preparation.Dataset(crimes=crime_data, study_area=study_area)
-    pipeline = build_default_pipeline(study_area, tfreq=tfreq, grid_resolution=grid_resolution,
-                                      lags=lags, random_state=random_state)
+    pipeline = build_default_pipeline(
+        study_area,
+        tfreq=tfreq,
+        grid_resolution=grid_resolution,
+        lags=lags,
+        random_state=random_state,
+    )
     pipeline.fit(dataset)
     predictions = pipeline.predict()
     return predictions, pipeline
 
 
-def evaluate_pipeline(pipeline, scoring='r2', cv=5):
+def evaluate_pipeline(pipeline, scoring="r2", cv=5):
     """
     Cross-validate a fitted pipeline; see :meth:`PredictionPipeline.evaluate`.
 
@@ -153,5 +189,5 @@ def evaluate_pipeline(pipeline, scoring='r2', cv=5):
         list: One score per fold.
     """
     scores = pipeline.evaluate(scoring=scoring, cv=cv)
-    logger.debug('Evaluation complete. Mean score: %.4f', np.mean(scores))
+    logger.debug("Evaluation complete. Mean score: %.4f", np.mean(scores))
     return scores

@@ -8,3 +8,6 @@
 build/
 dist/
 *.egg-info/
+.coverage
+htmlcov/
+.ruff_cache/
