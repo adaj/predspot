@@ -16,7 +16,7 @@ The output always contains one extra row for the period right after the last
 observed one, so that the fitted model can forecast the next period.
 """
 
-__author__ = 'Adelson Araujo'
+__author__ = "Adelson Araujo"
 
 import logging
 from abc import abstractmethod
@@ -47,8 +47,9 @@ def infer_offset(time_index):
     time_index = pd.DatetimeIndex(time_index).unique().sort_values()
     freq = pd.infer_freq(time_index) if len(time_index) >= 3 else None
     if freq is None:
-        raise ValueError('Could not infer the time frequency of the series; '
-                         'pass `tfreq` explicitly.')
+        raise ValueError(
+            "Could not infer the time frequency of the series; pass `tfreq` explicitly."
+        )
     return pd.tseries.frequencies.to_offset(freq)
 
 
@@ -64,7 +65,7 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin):
 
     def __init__(self, lags, tfreq=None):
         if not isinstance(lags, int) or lags < 2:
-            raise ValueError('`lags` must be an integer greater than 1.')
+            raise ValueError("`lags` must be an integer greater than 1.")
         self.lags = lags
         self.tfreq = tfreq
         self._offset = tfreq_offset(tfreq) if tfreq is not None else None
@@ -72,7 +73,7 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin):
     @property
     def label(self):
         """str: Prefix of the feature columns (override in subclasses)."""
-        return 'feature'
+        return "feature"
 
     @abstractmethod
     def apply_ts_decomposition(self, ts):
@@ -102,10 +103,10 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin):
             original series restricted to the same index.
         """
         if len(ts) <= self.lags:
-            raise ValueError('`lags` is higher than the number of time periods.')
+            raise ValueError("`lags` is higher than the number of time periods.")
         lag_df = pd.concat([ts.shift(lag) for lag in range(1, self.lags + 1)], axis=1)
-        lag_df = lag_df.iloc[self.lags:]
-        lag_df.columns = [f'{self.label}_{i}' for i in range(1, self.lags + 1)]
+        lag_df = lag_df.iloc[self.lags :]
+        lag_df.columns = [f"{self.label}_{i}" for i in range(1, self.lags + 1)]
         return lag_df, ts.loc[lag_df.index]
 
     def transform(self, stseries):
@@ -119,21 +120,22 @@ class TimeSeriesFeatures(BaseEstimator, TransformerMixin):
             pandas.DataFrame: Features indexed by ``(t, places)``, including
             one row for the period after the last observed one.
         """
-        times = stseries.index.get_level_values('t')
+        times = stseries.index.get_level_values("t")
         offset = self._offset if self._offset is not None else infer_offset(times)
-        places = stseries.index.get_level_values('places').unique()
-        logger.debug('%s: computing %d lags for %d places',
-                     type(self).__name__, self.lags, len(places))
+        places = stseries.index.get_level_values("places").unique()
+        logger.debug(
+            "%s: computing %d lags for %d places", type(self).__name__, self.lags, len(places)
+        )
         frames = []
         for place in places:
-            ts = stseries.xs(place, level='places').sort_index()
+            ts = stseries.xs(place, level="places").sort_index()
             ts = self.apply_ts_decomposition(ts)
             ts.loc[ts.index[-1] + offset] = None  # next period, to be forecast
             f, _ = self.make_lag_df(ts)
-            f['places'] = place
-            frames.append(f.set_index('places', append=True))
+            f["places"] = place
+            frames.append(f.set_index("places", append=True))
         X = pd.concat(frames)
-        X.index.names = ['t', 'places']
+        X.index.names = ["t", "places"]
         return X.sort_index()
 
 
@@ -142,7 +144,7 @@ class AR(TimeSeriesFeatures):
 
     @property
     def label(self):
-        return 'ar'
+        return "ar"
 
     def apply_ts_decomposition(self, ts):
         return ts
@@ -153,7 +155,7 @@ class Diff(TimeSeriesFeatures):
 
     @property
     def label(self):
-        return 'diff'
+        return "diff"
 
     def apply_ts_decomposition(self, ts):
         return ts.diff().iloc[1:]
@@ -166,8 +168,10 @@ class _STLFeatures(TimeSeriesFeatures):
 
     def apply_ts_decomposition(self, ts):
         if len(ts) < 2 * self.lags:
-            raise ValueError(f'{type(self).__name__} needs at least 2 * lags '
-                             f'({2 * self.lags}) periods; got {len(ts)}.')
+            raise ValueError(
+                f"{type(self).__name__} needs at least 2 * lags "
+                f"({2 * self.lags}) periods; got {len(ts)}."
+            )
         result = STL(ts, period=self.lags).fit()
         return getattr(result, self.component)
 
@@ -175,21 +179,21 @@ class _STLFeatures(TimeSeriesFeatures):
 class Seasonality(_STLFeatures):
     """Lags of the seasonal component of an STL decomposition (period = lags)."""
 
-    component = 'seasonal'
+    component = "seasonal"
 
     @property
     def label(self):
-        return 'seasonal'
+        return "seasonal"
 
 
 class Trend(_STLFeatures):
     """Lags of the trend component of an STL decomposition (period = lags)."""
 
-    component = 'trend'
+    component = "trend"
 
     @property
     def label(self):
-        return 'trend'
+        return "trend"
 
 
 class FeatureScaling(TransformerMixin, BaseEstimator):
@@ -209,8 +213,7 @@ class FeatureScaling(TransformerMixin, BaseEstimator):
         return self
 
     def __sklearn_is_fitted__(self):
-        return getattr(self, 'is_fitted_', False)
+        return getattr(self, "is_fitted_", False)
 
     def transform(self, x):
-        return pd.DataFrame(self.estimator.transform(x),
-                            index=x.index, columns=x.columns)
+        return pd.DataFrame(self.estimator.transform(x), index=x.index, columns=x.columns)

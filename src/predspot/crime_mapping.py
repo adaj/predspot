@@ -16,7 +16,7 @@ Both produce the same output format, a :class:`pandas.Series` named
 inside :class:`predspot.ml_modelling.PredictionPipeline`.
 """
 
-__author__ = 'Adelson Araujo'
+__author__ = "Adelson Araujo"
 
 import logging
 import math
@@ -26,7 +26,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from scipy.stats import gaussian_kde
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 from sklearn.base import BaseEstimator, TransformerMixin
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,16 @@ KM_PER_DEG_LAT = 110.57
 # Public aliases accepted for the time frequency and the pandas offset alias
 # they map to. Old pandas used 'M' for month end; pandas >= 2.2 uses 'ME'.
 TFREQ_ALIASES = {
-    'M': 'ME', 'ME': 'ME', 'MONTH': 'ME', 'MONTHLY': 'ME',
-    'W': 'W', 'WEEK': 'W', 'WEEKLY': 'W',
-    'D': 'D', 'DAY': 'D', 'DAILY': 'D',
+    "M": "ME",
+    "ME": "ME",
+    "MONTH": "ME",
+    "MONTHLY": "ME",
+    "W": "W",
+    "WEEK": "W",
+    "WEEKLY": "W",
+    "D": "D",
+    "DAY": "D",
+    "DAILY": "D",
 }
 
 
@@ -62,28 +69,27 @@ def normalize_tfreq(tfreq):
     """
     key = str(tfreq).upper()
     if key not in TFREQ_ALIASES:
-        raise ValueError(
-            f"Invalid tfreq {tfreq!r}. Choose (M)onthly, (W)eekly or (D)aily.")
+        raise ValueError(f"Invalid tfreq {tfreq!r}. Choose (M)onthly, (W)eekly or (D)aily.")
     return TFREQ_ALIASES[key]
 
 
 def tfreq_offset(tfreq):
     """Return the :class:`pandas.DateOffset` that advances one period of ``tfreq``."""
     alias = normalize_tfreq(tfreq)
-    if alias == 'ME':
+    if alias == "ME":
         return pd.offsets.MonthEnd(1)
-    if alias == 'W':
+    if alias == "W":
         return pd.offsets.Week(1)
     return pd.offsets.Day(1)
 
 
 def _check_bbox(bbox):
     if not isinstance(bbox, gpd.GeoDataFrame):
-        raise TypeError('bbox must be a geopandas GeoDataFrame.')
+        raise TypeError("bbox must be a geopandas GeoDataFrame.")
     if bbox.crs is None:
         raise ValueError('bbox must have a CRS (e.g. bbox.set_crs("EPSG:4326")).')
     if len(bbox) == 0:
-        raise ValueError('bbox is empty.')
+        raise ValueError("bbox is empty.")
 
 
 def _wgs84_bounds(bbox):
@@ -93,11 +99,9 @@ def _wgs84_bounds(bbox):
 
 def _clip_to_bbox(grid, bbox):
     """Keep only grid rows that intersect ``bbox`` (both in the same CRS)."""
-    keep = gpd.sjoin(grid, bbox[['geometry']], how='inner',
-                     predicate='intersects').index.unique()
+    keep = gpd.sjoin(grid, bbox[["geometry"]], how="inner", predicate="intersects").index.unique()
     if len(keep) == 0:
-        raise ValueError(
-            'resolution too big/coarse. No cells intersect the study area.')
+        raise ValueError("resolution too big/coarse. No cells intersect the study area.")
     return grid.loc[grid.index.isin(keep)]
 
 
@@ -106,8 +110,8 @@ def _add_centroid_lonlat(grid):
     projected = grid.geometry.to_crs(grid.estimate_utm_crs())
     centroids = projected.centroid.to_crs(WGS84)
     grid = grid.copy()
-    grid['lon'] = centroids.x.values
-    grid['lat'] = centroids.y.values
+    grid["lon"] = centroids.x.values
+    grid["lat"] = centroids.y.values
     return grid
 
 
@@ -131,9 +135,9 @@ def create_gridpoints(bbox, resolution, return_coords=False):
         ``return_coords`` is True, a tuple ``(gridpoints, lonv, latv)``.
     """
     if resolution <= 0:
-        raise ValueError('resolution must be a positive number of kilometers.')
+        raise ValueError("resolution must be a positive number of kilometers.")
     _check_bbox(bbox)
-    logger.debug('Creating point grid with resolution %s km', resolution)
+    logger.debug("Creating point grid with resolution %s km", resolution)
 
     b_w, b_s, b_e, b_n = _wgs84_bounds(bbox)
     nlon = max(int(np.ceil((b_e - b_w) / (resolution / KM_PER_DEG_LON))), 2)
@@ -141,10 +145,10 @@ def create_gridpoints(bbox, resolution, return_coords=False):
     lonv, latv = np.meshgrid(np.linspace(b_w, b_e, nlon), np.linspace(b_s, b_n, nlat))
     lon, lat = lonv.ravel(), latv.ravel()
     gridpoints = gpd.GeoDataFrame(
-        {'lon': lon, 'lat': lat},
-        geometry=gpd.points_from_xy(lon, lat), crs=WGS84).to_crs(bbox.crs)
+        {"lon": lon, "lat": lat}, geometry=gpd.points_from_xy(lon, lat), crs=WGS84
+    ).to_crs(bbox.crs)
     gridpoints = _clip_to_bbox(gridpoints, bbox)
-    gridpoints.index.name = 'places'
+    gridpoints.index.name = "places"
     if return_coords:
         return gridpoints, lonv, latv
     return gridpoints
@@ -163,10 +167,12 @@ def create_hexagon(side, x, y):
     Returns:
         Polygon: The hexagon.
     """
-    return Polygon([
-        (x + math.cos(math.radians(angle)) * side,
-         y + math.sin(math.radians(angle)) * side)
-        for angle in range(0, 360, 60)])
+    return Polygon(
+        [
+            (x + math.cos(math.radians(angle)) * side, y + math.sin(math.radians(angle)) * side)
+            for angle in range(0, 360, 60)
+        ]
+    )
 
 
 def create_gridhexagonal(bbox, resolution):
@@ -186,12 +192,12 @@ def create_gridhexagonal(bbox, resolution):
         ``lon`` and ``lat`` (centroid) columns and an index named ``places``.
     """
     if resolution <= 0:
-        raise ValueError('resolution must be a positive number of kilometers.')
+        raise ValueError("resolution must be a positive number of kilometers.")
     _check_bbox(bbox)
-    logger.debug('Creating hexagonal grid with resolution %s km', resolution)
+    logger.debug("Creating hexagonal grid with resolution %s km", resolution)
 
     # Side length such that the hexagon area equals resolution**2.
-    side_km = math.sqrt(resolution ** 2 * 2 / (3 * math.sqrt(3)))
+    side_km = math.sqrt(resolution**2 * 2 / (3 * math.sqrt(3)))
     side = side_km / KM_PER_DEG_LAT  # degrees (isotropic approximation)
     x_min, y_min, x_max, y_max = _wgs84_bounds(bbox)
 
@@ -222,7 +228,7 @@ def create_gridhexagonal(bbox, resolution):
     grid = gpd.GeoDataFrame(geometry=hexagons, crs=WGS84).to_crs(bbox.crs)
     grid = _clip_to_bbox(grid, bbox)
     grid = _add_centroid_lonlat(grid)
-    grid.index.name = 'places'
+    grid.index.name = "places"
     return grid
 
 
@@ -239,21 +245,22 @@ def create_gridsquares(bbox, resolution=1):
         ``lon`` and ``lat`` (centroid) columns and an index named ``places``.
     """
     if resolution <= 0:
-        raise ValueError('resolution must be a positive number of kilometers.')
+        raise ValueError("resolution must be a positive number of kilometers.")
     _check_bbox(bbox)
-    logger.debug('Creating square grid with resolution %s km', resolution)
+    logger.debug("Creating square grid with resolution %s km", resolution)
 
     x0, y0, xf, yf = _wgs84_bounds(bbox)
     dx = resolution / KM_PER_DEG_LON
     dy = resolution / KM_PER_DEG_LAT
     xs = np.arange(x0, xf, dx)
     ys = np.arange(y0, yf, dy)
-    squares = [Polygon([(x, y), (x + dx, y), (x + dx, y + dy), (x, y + dy)])
-               for x in xs for y in ys]
+    squares = [
+        Polygon([(x, y), (x + dx, y), (x + dx, y + dy), (x, y + dy)]) for x in xs for y in ys
+    ]
     grid = gpd.GeoDataFrame(geometry=squares, crs=WGS84).to_crs(bbox.crs)
     grid = _clip_to_bbox(grid, bbox)
     grid = _add_centroid_lonlat(grid)
-    grid.index.name = 'places'
+    grid.index.name = "places"
     return grid
 
 
@@ -284,15 +291,20 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator):
         self.end_time = end_time
 
         self._tfreq = normalize_tfreq(tfreq)
-        missing = [c for c in ('geometry', 'lon', 'lat') if c not in grid.columns]
+        missing = [c for c in ("geometry", "lon", "lat") if c not in grid.columns]
         if missing:
             raise ValueError(
-                f'Input grid must have `geometry`, `lon` and `lat` columns; missing {missing}.')
+                f"Input grid must have `geometry`, `lon` and `lat` columns; missing {missing}."
+            )
         self._grid = grid
         self._start_time = pd.to_datetime(start_time) if start_time else None
         self._end_time = pd.to_datetime(end_time) if end_time else None
-        logger.debug('%s initialised with tfreq=%s and %d places',
-                     type(self).__name__, self._tfreq, len(grid))
+        logger.debug(
+            "%s initialised with tfreq=%s and %d places",
+            type(self).__name__,
+            self._tfreq,
+            len(grid),
+        )
 
     @abstractmethod
     def fit_grid(self, data_points):
@@ -329,13 +341,13 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator):
             pandas.Series: Values named ``crime_density`` indexed by
             ``(t, places)``, sorted.
         """
-        if 't' not in data_points.columns:
-            raise ValueError('data_points must have a `t` timestamp column.')
-        events = data_points.set_index(pd.DatetimeIndex(data_points['t'])).sort_index()
+        if "t" not in data_points.columns:
+            raise ValueError("data_points must have a `t` timestamp column.")
+        events = data_points.set_index(pd.DatetimeIndex(data_points["t"])).sort_index()
         chunks = {label: chunk for label, chunk in events.resample(self._tfreq)}
         labels = pd.DatetimeIndex(list(chunks.keys()))
         time_index = self._time_index(labels)
-        logger.debug('Mapping %d events over %d periods', len(events), len(time_index))
+        logger.debug("Mapping %d events over %d periods", len(events), len(time_index))
 
         zeros = dict.fromkeys(self._grid.index, 0.0)
         rows = []
@@ -347,9 +359,9 @@ class SpatioTemporalMapping(ABC, TransformerMixin, BaseEstimator):
                 rows.append(self.fit_grid(chunk))
         frame = pd.DataFrame(rows, index=time_index)
         frame = frame.reindex(columns=self._grid.index)
-        stseries = frame.stack()
-        stseries.index.names = ['t', 'places']
-        stseries.name = 'crime_density'
+        stseries = frame.stack()  # noqa: PD013 - long format with (t, places) index
+        stseries.index.names = ["t", "places"]
+        stseries.name = "crime_density"
         return stseries.sort_index()
 
 
@@ -371,20 +383,20 @@ class KDE(SpatioTemporalMapping):
             time), or a positive number used directly as the KDE factor.
     """
 
-    def __init__(self, tfreq, grid, start_time=None, end_time=None, bandwidth='silverman'):
+    def __init__(self, tfreq, grid, start_time=None, end_time=None, bandwidth="silverman"):
         super().__init__(tfreq, grid, start_time, end_time)
         self.bandwidth = bandwidth
         if isinstance(bandwidth, str):
             method = bandwidth.lower()
-            if method == 'auto':
-                method = 'silverman'
-            if method not in ('silverman', 'scott'):
+            if method == "auto":
+                method = "silverman"
+            if method not in ("silverman", "scott"):
                 raise ValueError("bandwidth must be 'silverman', 'scott' or a number.")
             self._bw_method = method
             self._factor = None
         else:
             if bandwidth <= 0:
-                raise ValueError('bandwidth must be a positive number.')
+                raise ValueError("bandwidth must be a positive number.")
             self._bw_method = None
             self._factor = float(bandwidth)
         self._kernel = None
@@ -413,13 +425,14 @@ class KDE(SpatioTemporalMapping):
             self._kernel = gaussian_kde(xy, bw_method=bw)
             if self._factor is None:
                 self._factor = float(self._kernel.factor)
-                logger.debug('KDE bandwidth factor estimated with %s: %.5f',
-                             self._bw_method, self._factor)
-            values = self._kernel(self._grid[['lon', 'lat']].values.T)
-        density = pd.DataFrame({'crime_density': values}, index=self._grid.index)
+                logger.debug(
+                    "KDE bandwidth factor estimated with %s: %.5f", self._bw_method, self._factor
+                )
+            values = self._kernel(self._grid[["lon", "lat"]].values.T)
+        density = pd.DataFrame({"crime_density": values}, index=self._grid.index)
         if as_df:
             return density
-        return density['crime_density'].to_dict()
+        return density["crime_density"].to_dict()
 
 
 class QuadratCount(SpatioTemporalMapping):
@@ -438,9 +451,11 @@ class QuadratCount(SpatioTemporalMapping):
 
     def __init__(self, tfreq, grid, start_time=None, end_time=None):
         super().__init__(tfreq, grid, start_time, end_time)
-        if not grid.geom_type.isin(['Polygon', 'MultiPolygon']).all():
-            raise ValueError('QuadratCount requires a polygonal grid '
-                             '(see create_gridhexagonal / create_gridsquares).')
+        if not grid.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+            raise ValueError(
+                "QuadratCount requires a polygonal grid "
+                "(see create_gridhexagonal / create_gridsquares)."
+            )
 
     def fit_grid(self, data_points, as_df=False):
         """
@@ -453,15 +468,15 @@ class QuadratCount(SpatioTemporalMapping):
         Returns:
             dict or DataFrame: Number of events per cell.
         """
-        points = data_points[['geometry']].to_crs(self._grid.crs)
-        joined = gpd.sjoin(points, self._grid[['geometry']], how='inner',
-                           predicate='within')
+        points = data_points[["geometry"]].to_crs(self._grid.crs)
+        joined = gpd.sjoin(points, self._grid[["geometry"]], how="inner", predicate="within")
         # The right index column is named after the grid index ('places');
         # fall back to geopandas' default name otherwise.
-        col = 'places' if 'places' in joined.columns else 'index_right'
+        col = "places" if "places" in joined.columns else "index_right"
         counts = joined.groupby(col).size().reindex(self._grid.index, fill_value=0)
-        density = pd.DataFrame({'crime_density': counts.astype(float).values},
-                               index=self._grid.index)
+        density = pd.DataFrame(
+            {"crime_density": counts.astype(float).values}, index=self._grid.index
+        )
         if as_df:
             return density
-        return density['crime_density'].to_dict()
+        return density["crime_density"].to_dict()

@@ -7,7 +7,7 @@ feature selectors and regressors keep pandas indexes, so predictions stay
 attached to their ``(t, places)`` labels.
 """
 
-__author__ = 'Adelson Araujo'
+__author__ = "Adelson Araujo"
 
 import logging
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 idx = pd.IndexSlice
 
-SCORERS = {'r2': r2_score, 'mse': mean_squared_error}
+SCORERS = {"r2": r2_score, "mse": mean_squared_error}
 
 
 class FeatureSelection(TransformerMixin, BaseEstimator):
@@ -42,7 +42,7 @@ class FeatureSelection(TransformerMixin, BaseEstimator):
         return self
 
     def __sklearn_is_fitted__(self):
-        return getattr(self, 'is_fitted_', False)
+        return getattr(self, "is_fitted_", False)
 
     @property
     def support_(self):
@@ -50,8 +50,9 @@ class FeatureSelection(TransformerMixin, BaseEstimator):
         return self.estimator.support_
 
     def transform(self, x):
-        return pd.DataFrame(self.estimator.transform(x), index=x.index,
-                            columns=x.columns[self.estimator.support_])
+        return pd.DataFrame(
+            self.estimator.transform(x), index=x.index, columns=x.columns[self.estimator.support_]
+        )
 
 
 class Model(RegressorMixin, BaseEstimator):
@@ -71,15 +72,14 @@ class Model(RegressorMixin, BaseEstimator):
         return self
 
     def __sklearn_is_fitted__(self):
-        return getattr(self, 'is_fitted_', False)
+        return getattr(self, "is_fitted_", False)
 
     @property
     def feature_importances_(self):
         return self.estimator.feature_importances_
 
     def predict(self, x):
-        return pd.DataFrame(self.estimator.predict(x), index=x.index,
-                            columns=['crime_density'])
+        return pd.DataFrame(self.estimator.predict(x), index=x.index, columns=["crime_density"])
 
 
 class PredictionPipeline(RegressorMixin, BaseEstimator):
@@ -140,7 +140,7 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
 
     def _check_fitted(self):
         if self._X is None:
-            raise RuntimeError('This pipeline was not fitted yet.')
+            raise RuntimeError("This pipeline was not fitted yet.")
 
     @property
     def feature_importances(self):
@@ -156,18 +156,19 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
             pandas.DataFrame: Importance per feature, sorted descending.
         """
         self._check_fitted()
-        steps = getattr(self.estimator, 'steps', [('model', self.estimator)])
+        steps = getattr(self.estimator, "steps", [("model", self.estimator)])
         model = steps[-1][1]
         try:
             importances = model.feature_importances_
         except AttributeError as exc:
-            raise AttributeError('The estimator does not expose feature_importances_.') from exc
+            raise AttributeError("The estimator does not expose feature_importances_.") from exc
         columns = self._X.columns
         for _, step in steps[:-1]:
-            if hasattr(step, 'support_'):
+            if hasattr(step, "support_"):
                 columns = columns[step.support_]
-        return (pd.DataFrame({'importance': importances}, index=columns)
-                .sort_values('importance', ascending=False))
+        return pd.DataFrame({"importance": importances}, index=columns).sort_values(
+            "importance", ascending=False
+        )
 
     def fit(self, dataset, y=None):
         """
@@ -180,17 +181,17 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         Returns:
             PredictionPipeline: ``self``.
         """
-        logger.debug('Fitting prediction pipeline')
+        logger.debug("Fitting prediction pipeline")
         self._dataset = dataset
         self._stseries = self.mapping.fit_transform(dataset.crimes)
         self._X = self.fextraction.fit_transform(self._stseries)
-        t0 = self._X.index.get_level_values('t').min()
-        tf = self._stseries.index.get_level_values('t').max()
+        t0 = self._X.index.get_level_values("t").min()
+        tf = self._stseries.index.get_level_values("t").max()
         X = self._X.loc[t0:tf].sample(frac=1, random_state=self.random_state)
         y = self._stseries.loc[X.index]
         self.estimator.fit(X, y)
-        self._t_plus_one = self._X.index.get_level_values('t').max()
-        logger.debug('Pipeline fitted on %d rows; next period is %s', len(X), self._t_plus_one)
+        self._t_plus_one = self._X.index.get_level_values("t").max()
+        logger.debug("Pipeline fitted on %d rows; next period is %s", len(X), self._t_plus_one)
         return self
 
     def predict(self):
@@ -207,15 +208,15 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         self._check_fitted()
         X = self._X.loc[[self._t_plus_one], :]
         y_pred = pd.DataFrame(self.estimator.predict(X), index=X.index)
-        y_pred.columns = ['crime_density']
-        logger.debug('Predicted %d places for %s', len(y_pred), self._t_plus_one)
-        self._stseries = pd.concat([self._stseries, y_pred['crime_density']]).sort_index()
-        self._stseries.name = 'crime_density'
+        y_pred.columns = ["crime_density"]
+        logger.debug("Predicted %d places for %s", len(y_pred), self._t_plus_one)
+        self._stseries = pd.concat([self._stseries, y_pred["crime_density"]]).sort_index()
+        self._stseries.name = "crime_density"
         self._X = self.fextraction.transform(self._stseries)
         self._t_plus_one = self._t_plus_one + self._offset
         return y_pred
 
-    def evaluate(self, scoring='r2', cv=5):
+    def evaluate(self, scoring="r2", cv=5):
         """
         Score the estimator with time series cross-validation.
 
@@ -234,21 +235,25 @@ class PredictionPipeline(RegressorMixin, BaseEstimator):
         if scoring not in SCORERS:
             raise ValueError('invalid scoring. Try "r2" or "mse".')
         scorer = SCORERS[scoring]
-        timestamps = (self._X.index.get_level_values('t').unique()
-                      .intersection(self._stseries.index.get_level_values('t').unique())
-                      .sort_values())
+        timestamps = (
+            self._X.index.get_level_values("t")
+            .unique()
+            .intersection(self._stseries.index.get_level_values("t").unique())
+            .sort_values()
+        )
         if not isinstance(cv, int) or cv >= len(timestamps):
-            raise ValueError('cv must be an integer lower than the number of periods.')
+            raise ValueError("cv must be an integer lower than the number of periods.")
         scores = []
         for train_t, test_t in TimeSeriesSplit(cv).split(timestamps):
-            X_train = (self._X.loc[idx[timestamps[train_t], :], :]
-                       .sample(frac=1, random_state=self.random_state))
+            X_train = self._X.loc[idx[timestamps[train_t], :], :].sample(
+                frac=1, random_state=self.random_state
+            )
             X_test = self._X.loc[idx[timestamps[test_t], :], :]
             y_train = self._stseries.loc[X_train.index]
             y_test = self._stseries.loc[X_test.index]
             self.estimator.fit(X_train, y_train)
             y_pred = self.estimator.predict(X_test)
             scores.append(scorer(y_test, y_pred))
-        logger.debug('%s-fold CV %s scores: %s', cv, scoring, scores)
+        logger.debug("%s-fold CV %s scores: %s", cv, scoring, scores)
         self.fit(self._dataset)  # back to normal
         return scores
