@@ -12,3 +12,5 @@ dist/
 htmlcov/
 .ruff_cache/
 site/
+examples/cache/
+.cache/

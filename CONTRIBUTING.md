@@ -34,7 +34,15 @@ mkdocs serve            # live preview at http://127.0.0.1:8000
 mkdocs build --strict   # what CI runs
 ```
 
-Pushing to `master` deploys the site to GitHub Pages automatically.
+Pushing to `master` deploys the site to GitHub Pages automatically. The home
+page is generated from `README.md` (see `docs/hooks/readme.py`), and the
+example notebook is rendered from `examples/natal.ipynb`; regenerate and
+re-execute it with:
+
+```bash
+python examples/build_natal_notebook.py
+jupyter nbconvert --to notebook --execute --inplace examples/natal.ipynb
+```
 
 ## Releasing
 

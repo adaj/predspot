@@ -49,6 +49,7 @@ docs = [
   "mkdocs-material>=9.5,<10",
   "mkdocstrings[python]>=0.26",
   "mkdocs-autorefs>=1.2",
+  "mkdocs-jupyter>=0.25",
 ]
 dev = [
   "pytest>=8",
@@ -88,6 +89,7 @@ branch = true
 
 [tool.ruff]
 line-length = 100
+exclude = ["examples"]  # tutorial code: readability over line length
 target-version = "py310"
 src = ["src", "tests"]
 
