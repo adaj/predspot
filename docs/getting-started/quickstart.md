@@ -8,7 +8,7 @@ synthetic data so you can run it as is. Every step is explained in depth in the
 
 Predspot needs the boundary of the region you are studying as a GeoDataFrame
 with a CRS. The easiest way is to fetch it from OpenStreetMap
-(`pip install "predspot[osm]"`):
+(osmnx is installed with Predspot):
 
 ```python
 from predspot import load_study_area

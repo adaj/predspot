@@ -8,7 +8,7 @@ Thanks for your interest in Predspot! Issues and pull requests are welcome.
 git clone https://github.com/adaj/predspot.git
 cd predspot
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,osm,contour]"
+pip install -e ".[dev,contour,examples]"
 ```
 
 ## Checks

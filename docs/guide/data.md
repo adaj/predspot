@@ -38,7 +38,7 @@ removed, but grid cells are only created where they intersect it.
     place with [osmnx](https://osmnx.readthedocs.io) (Nominatim) and returns
     its administrative boundary. Be specific — add the state and country —
     so that the first match is the boundary you want; `which_result` lets you
-    pick another match. Requires `pip install "predspot[osm]"`.
+    pick another match. osmnx is installed with Predspot.
 
 === "From a file"
 
